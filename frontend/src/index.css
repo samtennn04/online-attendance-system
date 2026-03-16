@@ -1,0 +1,83 @@
+/* ---------------------- Global ---------------------- */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  background: linear-gradient(135deg, #006389, #0096c7);
+  color: #fff;
+  min-height: 100vh;
+}
+
+
+/* ---------------------- Responsive ---------------------- */
+@media (max-width: 768px) {
+  .admin-cards {
+    flex-direction: column;
+  }
+
+  .filter-bar {
+    flex-direction: column;
+  }
+
+  .search-box input {
+    width: 100%;
+  }
+
+  .date-filter {
+    width: 100%;
+  }
+
+  .logout-btn {
+    width: 100%;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+}
+
+/* ---------------------- Input Placeholder & Password ---------------------- */
+input::placeholder {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+input[type="password"]::-webkit-password-toggle-button,
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none !important;
+}
+
+#reader {
+  width: 100%;
+  max-width: 400px; /* or whatever you prefer */
+  height: 400px;
+  margin: auto;
+}
+
+/* src/index.css */
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: fixed;
+}
