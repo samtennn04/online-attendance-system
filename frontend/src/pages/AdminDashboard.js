@@ -62,42 +62,60 @@ const AdminDashboard = () => {
   
   const itemsPerPage = 15;
 
-// ========== FORMATTING FUNCTIONS ==========
-const formatDate = useCallback((date) => {
-  if (!date) return "-";
-  return new Date(date).toLocaleDateString("en-GB", {
-    day: "2-digit", month: "short", year: "numeric"
-  });
-}, []);
+  // ========== ADD THIS useEffect TO MONITOR STATE CHANGES ==========
+  useEffect(() => {
+    console.log("🔄 attendance state UPDATED:", attendance);
+  }, [attendance]);
 
-// Convert 24-hour time to 12-hour format with AM/PM
-const formatTime = useCallback((time) => {
-  if (!time) return "-";
-  
-  // Handle different time formats
-  let hours, minutes;
-  
-  if (time.includes(':')) {
-    [hours, minutes] = time.split(':');
-  } else {
-    return time; // Return as-is if not in expected format
-  }
-  
-  const hour = parseInt(hours, 10);
-  
-  // Convert to 12-hour format
-  const ampm = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12;
-  
-  return `${hour12}:${minutes} ${ampm}`;
-}, []);
+  useEffect(() => {
+    console.log("🔄 employees state UPDATED:", employees);
+  }, [employees]);
 
-const formatLocation = useCallback((location) => {
-  if (!location || location === "Unknown" || location === "-" || location === "null") {
-    return "—";
-  }
-  return location;
-}, []);
+  // ========== FORMATTING FUNCTIONS ==========
+  const formatDate = useCallback((date) => {
+    if (!date) return "-";
+    return new Date(date).toLocaleDateString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric"
+    });
+  }, []);
+
+  // Convert 24-hour time to 12-hour format with AM/PM
+  const formatTime = useCallback((time) => {
+    if (!time) return "-";
+    
+    // Handle different time formats
+    let hours, minutes;
+    
+    if (time.includes(':')) {
+      [hours, minutes] = time.split(':');
+    } else {
+      return time;
+    }
+    
+    const hour = parseInt(hours, 10);
+    
+    // Convert to 12-hour format
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    
+    // Return without seconds
+    return `${hour12}:${minutes} ${ampm}`;
+  }, []);
+
+  const formatLocation = useCallback((location) => {
+    if (!location || location === "Unknown" || location === "-" || location === "null") {
+      return "—";
+    }
+    return location;
+  }, []);
+
+  // ========== DEBUG LOGS ==========
+  console.log("🔍 DEBUG INFO:");
+  console.log("📊 attendance state:", attendance);
+  console.log("👥 employees state:", employees);
+  console.log("📅 selectedMonth:", selectedMonth);
+  console.log("=".repeat(50));
+
   // ========== TEST API CONNECTION ==========
   const testApiConnection = useCallback(async () => {
     const token = localStorage.getItem("adminToken");
@@ -158,40 +176,37 @@ const formatLocation = useCallback((location) => {
     }
   }, [navigate]);
 
-// ========== FETCH ATTENDANCE ==========
-const fetchAttendance = useCallback(async (year, month) => {
-  const token = localStorage.getItem("adminToken");
-  if (!token) return [];
+  // ========== FETCH ATTENDANCE ==========
+  const fetchAttendance = useCallback(async (year, month) => {
+    const token = localStorage.getItem("adminToken");
+    if (!token) return [];
 
-  try {
-    console.log(`📡 Fetching attendance for ${year}-${month}...`);
-    
-    const response = await api.get(`/admin/attendance/monthly/${year}/${month}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    
-    console.log("✅ API Response received");
-    console.log("📊 Attendance data:", response.data.attendance);
-    
-    if (response.data.success) {
-      console.log(`✅ Fetched ${response.data.attendance.length} records`);
+    try {
+      console.log(`📡 Fetching attendance for ${year}-${month}...`);
       
-      // Format the times for display
-      const formattedAttendance = response.data.attendance.map(record => ({
-        ...record,
-        // Keep raw times but add formatted version if needed
-        display_clock_in: record.clock_in,
-        display_clock_out: record.clock_out
-      }));
+      const response = await api.get(`/admin/attendance/monthly/${year}/${month}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       
-      return formattedAttendance || [];
+      console.log("✅ API Response received");
+      console.log("📊 Full response data:", response.data);
+      console.log("📊 Attendance data:", response.data.attendance);
+      
+      if (response.data.success) {
+        console.log(`✅ Fetched ${response.data.attendance?.length || 0} records`);
+        
+        if (response.data.attendance && response.data.attendance.length > 0) {
+          console.log("📋 First record:", response.data.attendance[0]);
+        }
+        
+        return response.data.attendance || [];
+      }
+      return [];
+    } catch (err) {
+      console.error("❌ Error fetching attendance:", err);
+      return [];
     }
-    return [];
-  } catch (err) {
-    console.error("❌ Error fetching attendance:", err);
-    return [];
-  }
-}, []);
+  }, []);
 
   // ========== FETCH ALL DATA ==========
   const loadData = useCallback(async () => {
@@ -203,22 +218,33 @@ const fetchAttendance = useCallback(async (year, month) => {
     
     setLoading(true);
     try {
+      console.log("🚀 Starting to load data...");
+      
       // Fetch employees
+      console.log("👥 Fetching employees...");
       const employeesData = await fetchEmployees();
+      console.log("👥 Employees fetched:", employeesData);
       
       // Fetch attendance for selected month
       const year = selectedMonth.getFullYear();
       const month = selectedMonth.getMonth() + 1;
+      console.log(`📅 Fetching attendance for ${year}-${month}...`);
+      
       const attendanceData = await fetchAttendance(year, month);
+      console.log("📊 Attendance fetched:", attendanceData);
       
       // Update state
+      console.log("💾 Setting employees state with:", employeesData.length, "records");
       setEmployees(employeesData);
+      
+      console.log("💾 Setting attendance state with:", attendanceData.length, "records");
       setAttendance(attendanceData);
       
-      console.log(`📊 Data loaded: ${employeesData.length} employees, ${attendanceData.length} attendance records`);
+      console.log("✅ Data loading complete");
+      console.log("📊 Final state - employees:", employeesData.length, "attendance:", attendanceData.length);
 
     } catch (err) {
-      console.error("Fetch error:", err);
+      console.error("❌ Fetch error:", err);
     } finally {
       setLoading(false);
     }
@@ -245,18 +271,25 @@ const fetchAttendance = useCallback(async (year, month) => {
 
   // ========== GENERATE COMPLETE ATTENDANCE ==========
   const generateCompleteAttendance = useCallback(() => {
-    if (!employees.length) return [];
+    console.log("🔄 Generating complete attendance...");
+    console.log("👥 Employees count:", employees.length);
+    console.log("📊 Raw attendance count:", attendance.length);
+    console.log("📊 Raw attendance data:", attendance);
+    
+    if (!employees.length) {
+      console.log("⚠️ No employees to generate attendance for");
+      return [];
+    }
 
     const year = selectedMonth.getFullYear();
     const month = selectedMonth.getMonth() + 1;
     
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const completeRecords = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    console.log(`📅 Selected month: ${year}-${month}`);
     
-    // Get the date when records were deleted (today)
-    const startDate = today; // Only show records from today onwards
+    const daysInMonth = new Date(year, month, 0).getDate();
+    console.log(`📅 Days in month: ${daysInMonth}`);
+    
+    const completeRecords = [];
 
     // Create a map of existing attendance records
     const attendanceMap = new Map();
@@ -267,6 +300,8 @@ const fetchAttendance = useCallback(async (year, month) => {
       }
       attendanceMap.get(key).push(record);
     });
+    
+    console.log("🗺️ Created attendance map with keys:", Array.from(attendanceMap.keys()));
 
     employees.forEach(employee => {
       const registrationDate = employee.created_at ? new Date(employee.created_at) : new Date();
@@ -279,9 +314,6 @@ const fetchAttendance = useCallback(async (year, month) => {
         
         // Skip dates before registration
         if (currentDate < registrationDate) continue;
-        
-        // Only include dates from today onwards
-        if (currentDate < startDate) continue;
         
         const dayRecords = attendanceMap.get(`${employee.id}-${dateStr}`) || [];
 
@@ -330,6 +362,9 @@ const fetchAttendance = useCallback(async (year, month) => {
       }
     });
 
+    console.log(`✅ Generated ${completeRecords.length} complete records`);
+    console.log("📋 First 3 records:", completeRecords.slice(0, 3));
+    
     // Sort by date (newest first) and employee name
     return completeRecords.sort((a, b) => {
       if (a.date < b.date) return 1;
@@ -437,8 +472,8 @@ const fetchAttendance = useCallback(async (year, month) => {
           item.username,
           item.employee_email || '-',
           formatDate(item.date),
-          item.clock_in || '-',  // Raw time from database
-          item.clock_out || '-', // Raw time from database
+          item.clock_in || '-',
+          item.clock_out || '-',
           formatLocation(item.location_name),
           item.status
         ]);
@@ -1036,12 +1071,12 @@ const fetchAttendance = useCallback(async (year, month) => {
                           <td style={styles.td}>{formatDate(item.date)}</td>
                           <td style={styles.td}>
                             <span style={item.clock_in ? styles.timeBadge : styles.missingBadge}>
-                              {item.clock_in || "—"}
+                              {formatTime(item.clock_in) || "—"}
                             </span>
                           </td>
                           <td style={styles.td}>
                             <span style={item.clock_out ? styles.timeBadge : styles.missingBadge}>
-                              {item.clock_out || "—"}
+                              {formatTime(item.clock_out) || "—"}
                             </span>
                           </td>
                           <td style={styles.td}>
