@@ -33,6 +33,7 @@ function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [logoLoaded, setLogoLoaded] = useState(false);
+  const [debugInfo, setDebugInfo] = useState("");
 
   const navigate = useNavigate();
 
@@ -52,16 +53,88 @@ function AdminLogin() {
     }
 
     setIsLoading(true);
-
+    setDebugInfo("Starting login...");
+    
+    // DEBUG LOGS
+    console.log("=".repeat(50));
+    console.log("🔐 ADMIN LOGIN DEBUG INFO");
+    console.log("=".repeat(50));
+    console.log("1. Password entered:", password);
+    console.log("2. API_URL:", API_URL);
+    console.log("3. Full endpoint:", `${API_URL}/auth/admin-login`);
+    console.log("4. Request payload:", { password });
+    
     try {
-      const res = await axios.post(`${API_URL}/adminlogin`, { password });
-      localStorage.setItem("adminToken", res.data.token);
-      navigate("/admindashboard");
+      console.log("5. Sending axios POST request...");
+      const startTime = Date.now();
+      
+      const res = await axios.post(`${API_URL}/auth/admin-login`, { 
+        password 
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000 // 10 second timeout
+      });
+      
+      const endTime = Date.now();
+      console.log("6. Request completed in", endTime - startTime, "ms");
+      console.log("7. Response status:", res.status);
+      console.log("8. Response data:", res.data);
+      
+      if (res.data.token) {
+        console.log("9. Token received:", res.data.token.substring(0, 20) + "...");
+        localStorage.setItem("adminToken", res.data.token);
+        console.log("10. Token saved to localStorage");
+        
+        // Verify token was saved
+        const savedToken = localStorage.getItem("adminToken");
+        console.log("11. Verified token in localStorage:", savedToken ? "Yes" : "No");
+        
+        setDebugInfo("Login successful! Redirecting...");
+        console.log("12. Navigating to /admindashboard");
+        navigate("/admindashboard");
+      } else {
+        console.error("No token in response:", res.data);
+        setDebugInfo("Error: No token in response");
+        alert("Login failed: Invalid server response");
+      }
+      
     } catch (err) {
-      console.error("Login error:", err);
-      alert("Login failed. Wrong password or server error.");
+      console.error("=".repeat(50));
+      console.error("❌ ERROR DETAILS");
+      console.error("=".repeat(50));
+      console.error("Error name:", err.name);
+      console.error("Error message:", err.message);
+      
+      if (err.code) {
+        console.error("Error code:", err.code);
+      }
+      
+      if (err.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error("Response status:", err.response.status);
+        console.error("Response headers:", err.response.headers);
+        console.error("Response data:", err.response.data);
+        setDebugInfo(`Server error: ${err.response.status} - ${JSON.stringify(err.response.data)}`);
+        alert(`Login failed: Server error ${err.response.status}`);
+      } else if (err.request) {
+        // The request was made but no response was received
+        console.error("No response received. Request:", err.request);
+        setDebugInfo("Network error: No response from server");
+        alert("Login failed: Cannot reach server. Check if backend is running.");
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error("Request setup error:", err.message);
+        setDebugInfo(`Request error: ${err.message}`);
+        alert(`Login failed: ${err.message}`);
+      }
+      
+      console.error("=".repeat(50));
     } finally {
       setIsLoading(false);
+      console.log("13. Login process completed");
     }
   };
 
@@ -135,6 +208,13 @@ function AdminLogin() {
           {isLoading ? 'Authenticating...' : 'Access Dashboard'}
         </button>
 
+        {/* Debug Info (only shown in development) */}
+        {debugInfo && process.env.NODE_ENV === 'development' && (
+          <div style={styles.debugInfo}>
+            <small>Debug: {debugInfo}</small>
+          </div>
+        )}
+
         {/* Security Note */}
         <div style={styles.securityNote}>
           <FaUserShield size={14} color={colors.gray} />
@@ -186,7 +266,7 @@ const styles = {
 
   logoWrapper: {
     position: "fixed",
-    top: "-20px", // Slightly reduced from 40px to accommodate larger logo
+    top: "-20px",
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 10,
@@ -196,9 +276,9 @@ const styles = {
   },
 
   logo: {
-    height: "200px", // Increased from 70px to 100px
+    height: "200px",
     width: "auto",
-    maxWidth: "450px", // Increased from 220px to 300px
+    maxWidth: "450px",
     objectFit: "contain",
     filter: `drop-shadow(0 4px 12px ${colors.primary}40)`,
     contentVisibility: "auto",
@@ -206,8 +286,8 @@ const styles = {
   },
 
   logoPlaceholder: {
-    height: "100px", // Match new logo height
-    width: "250px", // Increased from 180px
+    height: "100px",
+    width: "250px",
     backgroundColor: "rgba(255,255,255,0.1)",
     borderRadius: "8px",
   },
@@ -333,6 +413,16 @@ const styles = {
     color: "rgba(255,255,255,0.5)",
     fontWeight: "400",
     letterSpacing: "0.3px",
+  },
+
+  debugInfo: {
+    marginTop: "15px",
+    padding: "10px",
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: "8px",
+    fontSize: "12px",
+    color: "#ffd700",
+    wordBreak: "break-all",
   },
 };
 
