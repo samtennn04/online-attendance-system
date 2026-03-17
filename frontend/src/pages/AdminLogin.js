@@ -36,6 +36,8 @@ function AdminLogin() {
 
   const navigate = useNavigate();
 
+  console.log("✅ AdminLogin component mounted", window.location.pathname);
+
   // Preload logo
   useEffect(() => {
     const img = new Image();
