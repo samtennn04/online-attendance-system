@@ -280,14 +280,39 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
   }
 });
 
-/* ---------------- HELPER FUNCTION FOR IST TIME ---------------- */
+/* ---------------- HELPER FUNCTIONS FOR TIME CONVERSION ---------------- */
 
-// Helper function to get IST time (UTC+5:30)
+// Helper function to get IST time (UTC+5:30) for recording attendance
 const getISTTime = () => {
   const now = new Date();
   // Convert to IST (UTC+5:30)
   const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
   return istTime.toTimeString().split(" ")[0];
+};
+
+// Helper function to convert UTC time from database to IST for display
+const convertUTCToIST = (utcTime) => {
+  if (!utcTime) return null;
+  
+  // Parse the UTC time string (format: HH:MM:SS)
+  const [hours, minutes, seconds] = utcTime.split(':').map(Number);
+  
+  // Create a date object for today with the UTC time
+  const now = new Date();
+  const utcDate = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    hours,
+    minutes,
+    seconds
+  ));
+  
+  // Convert to IST (UTC+5:30)
+  const istTime = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
+  
+  // Format as HH:MM:SS
+  return istTime.toTimeString().split(' ')[0];
 };
 
 /* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
@@ -468,7 +493,7 @@ app.get("/admin/employees", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- TODAY'S ATTENDANCE ---------------- */
+/* ---------------- TODAY'S ATTENDANCE WITH IST CONVERSION ---------------- */
 
 app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
@@ -497,11 +522,18 @@ app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
       [today]
     );
     
+    // Convert UTC times to IST for display
+    const convertedAttendance = attendance.rows.map(record => ({
+      ...record,
+      clock_in: record.clock_in ? convertUTCToIST(record.clock_in) : null,
+      clock_out: record.clock_out ? convertUTCToIST(record.clock_out) : null
+    }));
+    
     res.json({
       success: true,
       date: today,
-      total_records: attendance.rows.length,
-      all_records: attendance.rows,
+      total_records: convertedAttendance.length,
+      all_records: convertedAttendance,
       employees: employees.rows
     });
   } catch (err) {
@@ -600,14 +632,14 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
       [targetDate]
     );
 
-    // Format the results
+    // Format the results with IST conversion
     const report = results.rows.map(row => ({
       employee_id: row.employee_id,
       username: row.username,
       email: row.email,
       date: targetDate,
-      clock_in: row.clock_in || null,
-      clock_out: row.clock_out || null,
+      clock_in: row.clock_in ? convertUTCToIST(row.clock_in) : null,
+      clock_out: row.clock_out ? convertUTCToIST(row.clock_out) : null,
       location: row.location_name || "—",
       status: row.is_absent ? "absent" : (row.clock_in ? (row.clock_out ? "present" : "partial") : "absent"),
       is_absent: row.is_absent || false
@@ -639,7 +671,7 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- MONTHLY ATTENDANCE ---------------- */
+/* ---------------- MONTHLY ATTENDANCE WITH IST CONVERSION ---------------- */
 
 app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) => {
   const { year, month } = req.params;
@@ -683,15 +715,22 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
       [yearNum, monthNum]
     );
     
-    console.log(`✅ Found ${attendanceRecords.rows.length} attendance records for ${year}-${month}`);
+    // Convert UTC times to IST for display
+    const convertedRecords = attendanceRecords.rows.map(record => ({
+      ...record,
+      clock_in: record.clock_in ? convertUTCToIST(record.clock_in) : null,
+      clock_out: record.clock_out ? convertUTCToIST(record.clock_out) : null
+    }));
+    
+    console.log(`✅ Found ${convertedRecords.length} attendance records for ${year}-${month}`);
     
     res.json({
       success: true,
       year: yearNum,
       month: monthNum,
       employees: employees.rows,
-      attendance: attendanceRecords.rows,
-      total_records: attendanceRecords.rows.length
+      attendance: convertedRecords,
+      total_records: convertedRecords.length
     });
   } catch (err) {
     console.error("Error fetching monthly attendance:", err);
@@ -702,7 +741,7 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
   }
 });
 
-/* ---------------- EMPLOYEE FULL HISTORY ---------------- */
+/* ---------------- EMPLOYEE FULL HISTORY WITH IST CONVERSION ---------------- */
 
 app.get("/admin/employee/:id/history", verifyAdmin, async (req, res) => {
   const employeeId = req.params.id;
@@ -737,10 +776,17 @@ app.get("/admin/employee/:id/history", verifyAdmin, async (req, res) => {
       [employeeId]
     );
 
+    // Convert UTC times to IST for display
+    const convertedAttendance = attendanceResult.rows.map(record => ({
+      ...record,
+      clock_in: record.clock_in ? convertUTCToIST(record.clock_in) : null,
+      clock_out: record.clock_out ? convertUTCToIST(record.clock_out) : null
+    }));
+
     res.json({
       employee,
-      attendance: attendanceResult.rows,
-      total_records: attendanceResult.rows.length,
+      attendance: convertedAttendance,
+      total_records: convertedAttendance.length,
       registered_date: employee.created_at
     });
   } catch (err) {
