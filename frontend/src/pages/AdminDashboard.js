@@ -70,15 +70,10 @@ const AdminDashboard = () => {
     });
   }, []);
 
+  // SIMPLIFIED: Just return the raw time from database (no conversion)
   const formatTime = useCallback((time) => {
     if (!time) return "-";
-    if (time.includes(':')) {
-      const [hours, minutes] = time.split(':');
-      const hour = parseInt(hours, 10);
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const hour12 = hour % 12 || 12;
-      return `${hour12}:${minutes} ${ampm}`;
-    }
+    // Return exactly what's in the database (e.g., "21:15:00")
     return time;
   }, []);
 
@@ -414,8 +409,8 @@ const AdminDashboard = () => {
           item.username,
           item.employee_email || '-',
           formatDate(item.date),
-          formatTime(item.clock_in),
-          formatTime(item.clock_out),
+          item.clock_in || '-',  // Raw time from database
+          item.clock_out || '-', // Raw time from database
           formatLocation(item.location_name),
           item.status
         ]);
@@ -448,7 +443,7 @@ const AdminDashboard = () => {
     } finally {
       setExportLoading(false);
     }
-  }, [activeView, filteredData, selectedMonth, completeAttendanceData, formatDate, formatTime, formatLocation]);
+  }, [activeView, filteredData, selectedMonth, completeAttendanceData, formatDate, formatLocation]);
 
   const paginatedData = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -1013,12 +1008,12 @@ const AdminDashboard = () => {
                           <td style={styles.td}>{formatDate(item.date)}</td>
                           <td style={styles.td}>
                             <span style={item.clock_in ? styles.timeBadge : styles.missingBadge}>
-                              {formatTime(item.clock_in) || "—"}
+                              {item.clock_in || "—"}
                             </span>
                           </td>
                           <td style={styles.td}>
                             <span style={item.clock_out ? styles.timeBadge : styles.missingBadge}>
-                              {formatTime(item.clock_out) || "—"}
+                              {item.clock_out || "—"}
                             </span>
                           </td>
                           <td style={styles.td}>
