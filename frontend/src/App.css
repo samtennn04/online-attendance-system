@@ -36,23 +36,3 @@
     transform: rotate(360deg);
   }
 }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden; /* This prevents the entire page from scrolling */
-    height: 100%;
-    width: 100%;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-  }
-
-  #root {
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-    position: fixed;
-  }

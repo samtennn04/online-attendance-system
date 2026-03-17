@@ -54,7 +54,7 @@ function AdminLogin() {
     setIsLoading(true);
 
     try {
-      const res = await axios.post(`${API_URL}/auth/admin-login`, { password });
+      const res = await axios.post(`${API_URL}/adminlogin`, { password });
       localStorage.setItem("adminToken", res.data.token);
       navigate("/admindashboard");
     } catch (err) {
