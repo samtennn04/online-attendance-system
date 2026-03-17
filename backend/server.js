@@ -285,9 +285,33 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
 // Helper function to get IST time (UTC+5:30) for recording attendance
 const getISTTime = () => {
   const now = new Date();
+  
+  // Get UTC time
+  const utcHours = now.getUTCHours();
+  const utcMinutes = now.getUTCMinutes();
+  const utcSeconds = now.getUTCSeconds();
+  
   // Convert to IST (UTC+5:30)
-  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-  return istTime.toTimeString().split(" ")[0];
+  let istHours = utcHours + 5;
+  let istMinutes = utcMinutes + 30;
+  
+  // Handle minute overflow
+  if (istMinutes >= 60) {
+    istMinutes -= 60;
+    istHours += 1;
+  }
+  
+  // Handle hour overflow
+  if (istHours >= 24) {
+    istHours -= 24;
+  }
+  
+  // Format with leading zeros
+  const formattedHours = String(istHours).padStart(2, '0');
+  const formattedMinutes = String(istMinutes).padStart(2, '0');
+  const formattedSeconds = String(utcSeconds).padStart(2, '0');
+  
+  return `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
 };
 
 /* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
