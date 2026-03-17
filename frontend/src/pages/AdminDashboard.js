@@ -10,7 +10,7 @@ import {
 } from "react-icons/fi";
 import logo from "../assets/logo.png";
 
-const API_URL = "https://nonshredding-claudine-opulently.ngrok-free.dev";
+const API_URL = "https://online-attendance-system-1-cbgc.onrender.com";
 const api = axios.create({ 
   baseURL: API_URL, 
   timeout: 15000, 

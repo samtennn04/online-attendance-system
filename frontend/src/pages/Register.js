@@ -4,7 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
 import { FaEye, FaEyeSlash, FaUser, FaEnvelope, FaLock } from "react-icons/fa";
 
-const API_URL = "https://nonshredding-claudine-opulently.ngrok-free.dev";
+const API_URL = "https://online-attendance-system-1-cbgc.onrender.com";
 
 // Color palette matching AdminDashboard
 const colors = {

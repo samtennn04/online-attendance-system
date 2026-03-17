@@ -1074,6 +1074,11 @@ cron.schedule('59 23 * * *', () => {
 
 console.log("⏰ Scheduled end of day job set for 11:59 PM daily (marking previous day's absent)");
 
+app.get("/", (req, res) => {
+  res.send("Attendance System Backend is Running ✅");
+});
+
+
 /* ---------------- START SERVER ---------------- */
 
 app.listen(PORT, () => {

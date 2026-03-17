@@ -7,7 +7,7 @@ import { FaEye, FaEyeSlash, FaEnvelope, FaLock } from "react-icons/fa";
 // Import logo directly - this ensures it's bundled and loaded immediately
 import logo from "../assets/logo.png";
 
-const API_URL = "https://nonshredding-claudine-opulently.ngrok-free.dev";
+const API_URL = "https://online-attendance-system-1-cbgc.onrender.com";
 
 // Color palette matching AdminDashboard
 const colors = {
