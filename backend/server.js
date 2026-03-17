@@ -1,6 +1,7 @@
 require('dotenv').config();
 const path = require('path');
 const express = require("express");
+const db = require("./db");
 const mysql = require("mysql2");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -30,12 +31,12 @@ const JWT_SECRET = "secretkey";
 
 /* ---------------- MYSQL CONNECTION ---------------- */
 
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME
-});
+// const db = mysql.createConnection({
+//   host: process.env.DB_HOST,
+//   user: process.env.DB_USER,
+//   password: process.env.DB_PASSWORD,
+//   database: process.env.DB_NAME
+// });
 
 // const db = mysql.createConnection({
 //   host: "localhost",
