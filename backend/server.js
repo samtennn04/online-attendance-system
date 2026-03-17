@@ -1,5 +1,6 @@
-const express = require("express");
+require('dotenv').config();
 const path = require('path');
+const express = require("express");
 const mysql = require("mysql2");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -30,16 +31,23 @@ const JWT_SECRET = "secretkey";
 /* ---------------- MYSQL CONNECTION ---------------- */
 
 const db = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "Samsam04!",
-  database: "attendance_system"
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME
 });
 
-db.connect(err => {
-  if (err) console.log("DB error:", err);
-  else console.log("MySQL Connected");
-});
+// const db = mysql.createConnection({
+//   host: "localhost",
+//   user: "root",
+//   password: "Samsam04!",
+//   database: "attendance_system"
+// });
+
+// db.connect(err => {
+//   if (err) console.log("DB error:", err);
+//   else console.log("MySQL Connected");
+// });
 
 /* ---------------- REGISTER ---------------- */
 
@@ -231,8 +239,8 @@ app.post("/attendance", verifyToken, async (req, res) => {
   try {
     if (latitude && longitude && latitude !== 0 && longitude !== 0) {
       const geo = await axios.get(
-        `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=47b18931cdda481ba8af9a9f321f02ac`
-      );
+  `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${process.env.GEOCODE_KEY}`
+);
       const comp = geo.data.results[0]?.components;
       
       let road = comp.road || "";
@@ -1079,13 +1087,28 @@ app.get("/", (req, res) => {
   res.send("Attendance System Backend is Running ✅");
 });
 
-const path = require("path");
 
-// Serve React frontend
-app.use(express.static(path.join(__dirname, "build")));
+// Serve React static files
+const buildPath = path.join(__dirname, "build");
+app.use(express.static(buildPath));
 
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "build", "index.html"));
+// For any request that doesn't match an API route, serve the React app
+app.use((req, res, next) => {
+  // Check if the request is for an API route
+  if (req.path.startsWith('/admin') || 
+      req.path.startsWith('/auth') || 
+      req.path === '/login' || 
+      req.path.startsWith('/attendance')) {
+    return next(); // Continue to API routes
+  }
+  
+  // For all other routes, serve the React app
+  res.sendFile(path.join(buildPath, 'index.html'));
+});
+
+// 404 handler for unmatched API routes
+app.use((req, res) => {
+  res.status(404).json({ message: 'API route not found' });
 });
 /* ---------------- START SERVER ---------------- */
 
