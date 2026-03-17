@@ -62,28 +62,42 @@ const AdminDashboard = () => {
   
   const itemsPerPage = 15;
 
-  // ========== FORMATTING FUNCTIONS ==========
-  const formatDate = useCallback((date) => {
-    if (!date) return "-";
-    return new Date(date).toLocaleDateString("en-GB", {
-      day: "2-digit", month: "short", year: "numeric"
-    });
-  }, []);
+// ========== FORMATTING FUNCTIONS ==========
+const formatDate = useCallback((date) => {
+  if (!date) return "-";
+  return new Date(date).toLocaleDateString("en-GB", {
+    day: "2-digit", month: "short", year: "numeric"
+  });
+}, []);
 
-  // SIMPLIFIED: Just return the raw time from database (no conversion)
-  const formatTime = useCallback((time) => {
-    if (!time) return "-";
-    // Return exactly what's in the database (e.g., "21:15:00")
-    return time;
-  }, []);
+// Convert 24-hour time to 12-hour format with AM/PM
+const formatTime = useCallback((time) => {
+  if (!time) return "-";
+  
+  // Handle different time formats
+  let hours, minutes;
+  
+  if (time.includes(':')) {
+    [hours, minutes] = time.split(':');
+  } else {
+    return time; // Return as-is if not in expected format
+  }
+  
+  const hour = parseInt(hours, 10);
+  
+  // Convert to 12-hour format
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12;
+  
+  return `${hour12}:${minutes} ${ampm}`;
+}, []);
 
-  const formatLocation = useCallback((location) => {
-    if (!location || location === "Unknown" || location === "-" || location === "null") {
-      return "—";
-    }
-    return location;
-  }, []);
-
+const formatLocation = useCallback((location) => {
+  if (!location || location === "Unknown" || location === "-" || location === "null") {
+    return "—";
+  }
+  return location;
+}, []);
   // ========== TEST API CONNECTION ==========
   const testApiConnection = useCallback(async () => {
     const token = localStorage.getItem("adminToken");
@@ -144,26 +158,33 @@ const AdminDashboard = () => {
     }
   }, [navigate]);
 
-  // ========== FETCH ATTENDANCE ==========
-  const fetchAttendance = useCallback(async (year, month) => {
-    const token = localStorage.getItem("adminToken");
-    if (!token) return [];
+// ========== FETCH ATTENDANCE ==========
+const fetchAttendance = useCallback(async (year, month) => {
+  const token = localStorage.getItem("adminToken");
+  if (!token) return [];
 
-    try {
-      const response = await api.get(`/admin/attendance/monthly/${year}/${month}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+  try {
+    const response = await api.get(`/admin/attendance/monthly/${year}/${month}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    if (response.data.success) {
+      console.log(`✅ Fetched ${response.data.attendance.length} attendance records for ${year}-${month}`);
       
-      if (response.data.success) {
-        console.log(`✅ Fetched ${response.data.attendance.length} attendance records for ${year}-${month}`);
-        return response.data.attendance || [];
+      // DEBUG: Log raw times from backend
+      if (response.data.attendance.length > 0) {
+        console.log("🔍 Raw clock_in from backend:", response.data.attendance[0].clock_in);
+        console.log("🔍 Raw clock_out from backend:", response.data.attendance[0].clock_out);
       }
-      return [];
-    } catch (err) {
-      console.error("Error fetching attendance:", err);
-      return [];
+      
+      return response.data.attendance || [];
     }
-  }, []);
+    return [];
+  } catch (err) {
+    console.error("Error fetching attendance:", err);
+    return [];
+  }
+}, []);
 
   // ========== FETCH ALL DATA ==========
   const loadData = useCallback(async () => {
