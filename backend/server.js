@@ -1098,12 +1098,12 @@ app.use((req, res, next) => {
   // Check if the request is for an API route
   if (req.path.startsWith('/admin') || 
       req.path.startsWith('/auth') || 
-      req.path === '/login' || 
+      req.path.startsWith('/api') || // Add this to catch /api/login
       req.path.startsWith('/attendance')) {
     return next(); // Continue to API routes
   }
   
-  // For all other routes, serve the React app
+  // For all other routes (including /login), serve the React app
   res.sendFile(path.join(buildPath, 'index.html'));
 });
 
@@ -1111,6 +1111,7 @@ app.use((req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({ message: 'API route not found' });
 });
+
 /* ---------------- START SERVER ---------------- */
 
 app.listen(PORT, () => {
