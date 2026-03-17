@@ -1139,4 +1139,4 @@ app.listen(PORT, () => {
   console.log("   DELETE /admin/attendance/range");
   console.log("   POST /admin/end-of-day");
   console.log("=".repeat(50));
-});
+});// Fresh deploy Tue, Mar 17, 2026  3:51:43 PM
