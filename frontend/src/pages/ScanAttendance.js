@@ -15,7 +15,7 @@ const api = axios.create({
     'ngrok-skip-browser-warning': 'true',
     'Content-Type': 'application/json'
   },
-  timeout: 15000 // Increased timeout for sleepy backend
+  timeout: 15000
 });
 
 // Color palette
@@ -54,6 +54,7 @@ function ScanAttendance() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [backendAwake, setBackendAwake] = useState(false);
+  const [currentRecordId, setCurrentRecordId] = useState(null); // Track the current attendance record ID
 
   const qrCodeRegionId = "qr-reader";
   const html5QrCodeRef = useRef(null);
@@ -63,6 +64,7 @@ function ScanAttendance() {
   const scannerInitializedRef = useRef(false);
 
   const token = localStorage.getItem("token");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   // Wake up backend function
   const wakeUpBackend = useCallback(async () => {
@@ -116,6 +118,12 @@ function ScanAttendance() {
       });
       
       console.log("Server status response:", response.data);
+      
+      // Store the record ID if there's an incomplete record
+      if (response.data.recordId) {
+        setCurrentRecordId(response.data.recordId);
+      }
+      
       return response.data;
     } catch (err) {
       console.error("Error checking server status:", err);
@@ -171,13 +179,13 @@ function ScanAttendance() {
         } else {
           // Fallback to localStorage if server is unavailable
           const today = new Date().toISOString().split('T')[0];
-          const savedClockIn = localStorage.getItem(`clockIn_${today}`);
-          const savedClockOut = localStorage.getItem(`clockOut_${today}`);
+          const savedClockIn = localStorage.getItem(`clockIn_${today}_${user.id}`);
+          const savedClockOut = localStorage.getItem(`clockOut_${today}_${user.id}`);
           
           const clockedIn = savedClockIn === 'true';
           const clockedOut = savedClockOut === 'true';
           
-          console.log("Using localStorage fallback:", { clockedIn, clockedOut });
+          console.log("Using localStorage fallback:", { clockedIn, clockedOut, userId: user.id });
           
           setAttendanceStatus({
             hasClockedIn: clockedIn,
@@ -212,16 +220,16 @@ function ScanAttendance() {
     };
 
     initialize();
-  }, [token, navigate, checkAttendanceStatus, goToEmployeeDashboard, wakeUpBackend]);
+  }, [token, navigate, checkAttendanceStatus, goToEmployeeDashboard, wakeUpBackend, user.id]);
 
   // Handle successful scan
-  const handleSuccessfulScan = useCallback(async (action, location) => {
+  const handleSuccessfulScan = useCallback(async (action, location, responseData) => {
     if (alertShownRef.current) return;
     alertShownRef.current = true;
     
     const isClockIn = action === "clock_in";
     
-    console.log("Successful scan:", { action, isClockIn, location });
+    console.log("Successful scan:", { action, isClockIn, location, responseData });
     
     // Update status based on action
     if (isClockIn) {
@@ -234,9 +242,17 @@ function ScanAttendance() {
         message: "Clocked in successfully"
       });
       
-      // Store in localStorage as backup
+      // Store record ID if returned
+      if (responseData.recordId) {
+        setCurrentRecordId(responseData.recordId);
+      }
+      
+      // Store in localStorage as backup with user ID
       const dateKey = new Date().toISOString().split('T')[0];
-      localStorage.setItem(`clockIn_${dateKey}`, 'true');
+      localStorage.setItem(`clockIn_${dateKey}_${user.id}`, 'true');
+      if (responseData.recordId) {
+        localStorage.setItem(`recordId_${dateKey}_${user.id}`, responseData.recordId);
+      }
       
       setScanMessage("Clock In Successful!");
       setStatus("Clock In Successful!");
@@ -252,9 +268,9 @@ function ScanAttendance() {
         message: "Attendance completed"
       });
       
-      // Store in localStorage as backup
+      // Store in localStorage as backup with user ID
       const dateKey = new Date().toISOString().split('T')[0];
-      localStorage.setItem(`clockOut_${dateKey}`, 'true');
+      localStorage.setItem(`clockOut_${dateKey}_${user.id}`, 'true');
       
       setScanMessage("Clock Out Successful!");
       setStatus("Clock Out Successful!");
@@ -273,7 +289,7 @@ function ScanAttendance() {
       stopScannerAndGoToDashboard();
     }, 1500);
     
-  }, [stopScannerAndGoToDashboard]);
+  }, [stopScannerAndGoToDashboard, user.id]);
 
   // Handle scan error
   const handleScanError = useCallback((errorMessage) => {
@@ -421,7 +437,9 @@ function ScanAttendance() {
         
         console.log("🔍 QR Code detected:", decodedText);
         console.log("🔑 Token exists:", !!token);
+        console.log("👤 User ID:", user.id);
         console.log("🌐 API_URL:", API_URL);
+        console.log("📊 Current attendance status:", attendanceStatus);
         
         // Double-check status before processing
         if (attendanceStatus.hasClockedOut) {
@@ -449,7 +467,13 @@ function ScanAttendance() {
           }
 
           console.log("📤 Sending attendance request to:", `${API_URL}/attendance`);
-          console.log("📦 Request data:", { qrData: decodedText, latitude, longitude });
+          console.log("📦 Request data:", { 
+            qrData: decodedText, 
+            latitude, 
+            longitude,
+            userId: user.id,
+            action: attendanceStatus.hasClockedIn ? "clock_out" : "clock_in"
+          });
 
           // Send attendance request to server using api instance
           const response = await api.post('/attendance', 
@@ -462,7 +486,7 @@ function ScanAttendance() {
               headers: { 
                 Authorization: `Bearer ${token}`
               },
-              timeout: 15000 // 15 second timeout
+              timeout: 15000
             }
           );
 
@@ -471,7 +495,8 @@ function ScanAttendance() {
           if (response.data.success) {
             await handleSuccessfulScan(
               response.data.action,
-              response.data.location || "Unknown"
+              response.data.location || "Unknown",
+              response.data
             );
           } else {
             handleScanError(response.data.message || "Unable to process attendance");
@@ -489,14 +514,11 @@ function ScanAttendance() {
           if (err.code === 'ECONNABORTED') {
             errorMsg = "Connection timeout. Server is waking up. Please try again in 30 seconds.";
             console.log("⏱️ Request timeout - backend might be sleeping");
-            // Try to wake up backend again
             wakeUpBackend();
           } else if (err.response) {
-            // The request was made and the server responded with a status code
             errorMsg = err.response.data?.message || err.message;
             console.log("Server responded with error:", err.response.status, err.response.data);
             
-            // Handle specific error cases
             if (err.response.status === 400) {
               if (errorMsg.includes("already completed")) {
                 const formattedDate = new Date().toLocaleDateString('en-GB', {
@@ -509,27 +531,37 @@ function ScanAttendance() {
                 return;
               } else if (errorMsg.includes("Invalid QR")) {
                 alert(`❌ Invalid QR Code. Please scan the correct attendance QR.`);
+              } else if (errorMsg.includes("No incomplete record")) {
+                // This is the key error for clock out issues
+                alert(`❌ Cannot clock out. No active clock-in found. Please try clocking in first.`);
+                // Reset status to allow clock in again
+                setAttendanceStatus(prev => ({
+                  ...prev,
+                  hasClockedIn: false,
+                  canClockIn: true,
+                  canClockOut: false
+                }));
               } else {
                 alert(`❌ ${errorMsg}`);
               }
             } else if (err.response.status === 401 || err.response.status === 403) {
               alert("Your session has expired. Please login again.");
               localStorage.removeItem("token");
+              localStorage.removeItem("user");
               navigate("/login");
               return;
+            } else if (err.response.status === 500) {
+              alert(`❌ Server error: ${errorMsg}. Please try again.`);
+              console.error("Server 500 error details:", err.response.data);
             } else {
               alert(`❌ Server error: ${errorMsg}`);
             }
           } else if (err.request) {
-            // The request was made but no response was received
             errorMsg = "Cannot connect to server. Please check your connection.";
             console.log("📡 No response from server - network issue");
             alert(`❌ ${errorMsg}`);
-            
-            // Try to wake up backend
             wakeUpBackend();
           } else {
-            // Something happened in setting up the request
             errorMsg = err.message;
             alert(`❌ Error: ${errorMsg}`);
           }
@@ -539,14 +571,12 @@ function ScanAttendance() {
       };
 
       const scanErrorCallback = (errorMessage) => {
-        // Ignore common scan errors
         if (!errorMessage.includes("NotFoundException") && 
             !errorMessage.includes("No MultiFormat")) {
           console.debug('Scan error:', errorMessage);
         }
       };
 
-      // Start scanner with appropriate config
       if (!cameraId) {
         await html5QrCodeRef.current.start(
           { facingMode: "environment" },
@@ -580,7 +610,7 @@ function ScanAttendance() {
         }, 1000);
       }
     }
-  }, [token, handleSuccessfulScan, handleScanError, retryCount, stopScannerAndGoToDashboard, attendanceStatus.hasClockedOut, processing, navigate, wakeUpBackend]);
+  }, [token, handleSuccessfulScan, handleScanError, retryCount, stopScannerAndGoToDashboard, attendanceStatus, processing, navigate, wakeUpBackend, user.id]);
 
   // Initialize scanner after status check
   useEffect(() => {
@@ -642,20 +672,16 @@ function ScanAttendance() {
 
   return (
     <div style={styles.container}>
-      {/* Fixed Background */}
       <div style={styles.fixedBackground}>
         <div style={styles.backgroundPattern}></div>
         <div style={styles.backgroundOverlay}></div>
       </div>
 
-      {/* Back Button */}
       <button onClick={handleBack} style={styles.backButton}>
         <FaArrowLeft size={20} color={colors.primary} />
       </button>
 
-      {/* Main Card */}
       <div style={styles.card}>
-        {/* Header */}
         <div style={styles.header}>
           <div style={styles.iconContainer}>
             <FaQrcode size={24} color={colors.white} />
@@ -663,7 +689,6 @@ function ScanAttendance() {
           <h2 style={styles.title}>Scan Attendance</h2>
         </div>
 
-        {/* Status Indicator */}
         {attendanceStatus.hasClockedIn && !attendanceStatus.hasClockedOut && (
           <div style={styles.statusIndicator}>
             <span style={styles.statusIndicatorText}>⏰ Ready for Clock Out</span>
@@ -676,14 +701,12 @@ function ScanAttendance() {
           </div>
         )}
 
-        {/* Camera Error Display */}
         {cameraError && (
           <div style={styles.errorContainer}>
             <p style={styles.errorText}>{cameraError}</p>
           </div>
         )}
 
-        {/* Status Bar */}
         <div style={styles.statusBar}>
           <div style={styles.statusItem}>
             <MdLocationOn size={12} color={locationPermission ? colors.primary : colors.gray} />
@@ -702,21 +725,18 @@ function ScanAttendance() {
           </div>
         </div>
 
-        {/* Backend Status Indicator */}
         {!backendAwake && (
           <div style={styles.warningContainer}>
             <p style={styles.warningText}>⚠️ Connecting to server. Please wait...</p>
           </div>
         )}
 
-        {/* Success Message */}
         {scanSuccess && (
           <div style={styles.successIndicator}>
             <span style={styles.successText}>{scanMessage}</span>
           </div>
         )}
 
-        {/* Scanner Container - Only show if not completed */}
         {!attendanceStatus.hasClockedOut && (
           <div style={styles.scannerContainer}>
             <div 
@@ -733,7 +753,6 @@ function ScanAttendance() {
               </div>
             )}
 
-            {/* Scanner Frame */}
             <div style={styles.scannerFrame}>
               <div style={styles.cornerTL}></div>
               <div style={styles.cornerTR}></div>
@@ -747,7 +766,6 @@ function ScanAttendance() {
           </div>
         )}
 
-        {/* Completed State - Show message instead of scanner */}
         {attendanceStatus.hasClockedOut && (
           <div style={styles.completedContainer}>
             <div style={styles.completedIcon}>✓</div>
@@ -758,12 +776,10 @@ function ScanAttendance() {
           </div>
         )}
 
-        {/* Instruction */}
         <p style={styles.instruction}>
           {getInstructionMessage()}
         </p>
 
-        {/* Retry Button */}
         {(cameraError || cameraPermission === false) && !attendanceStatus.hasClockedOut && (
           <button onClick={handleRetry} style={styles.retryButton}>
             <MdRefresh size={16} style={{ marginRight: '6px' }} />
@@ -775,7 +791,7 @@ function ScanAttendance() {
   );
 }
 
-// Styles
+// Styles (same as before - keeping them identical)
 const styles = {
   container: {
     position: "fixed",
