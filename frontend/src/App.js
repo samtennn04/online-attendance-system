@@ -29,7 +29,7 @@ function App() {
   return (
     <Router>
 <Routes>
-  {/* Specific routes FIRST */}
+  <Route path="/" element={<Login />} />
   <Route path="/adminlogin" element={<AdminLogin />} />
   <Route path="/login" element={<Login />} />
   <Route path="/register" element={<Register />} />
@@ -38,9 +38,8 @@ function App() {
   <Route path="/employee" element={<PrivateRoute><EmployeeDashboard /></PrivateRoute>} />
   <Route path="/scan" element={<PrivateRoute><ScanAttendance /></PrivateRoute>} />
   <Route path="/admindashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-  
-  {/* Catch-all route LAST */}
-  <Route path="*" element={<Navigate to="/login" replace />} />
+
+  <Route path="*" element={<Navigate to="/" replace />} />
 </Routes>
     </Router>
   );
