@@ -497,7 +497,7 @@ app.get("/admin/employees", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- TODAY'S ATTENDANCE - SEND RAW TIME ---------------- */
+/* ---------------- TODAY'S ATTENDANCE - FORCE RAW TIME ---------------- */
 
 app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
@@ -508,15 +508,19 @@ app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
       "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
     );
 
-    // Then get today's attendance - SEND RAW TIME
+    // Get today's attendance - FORCE RAW TIME
     const attendance = await pool.query(
       `SELECT 
           a.id,
           a.employee_id,
           u.username,
           TO_CHAR(a.date, 'YYYY-MM-DD') as date,
-          a.clock_in::text as clock_in,
-          a.clock_out::text as clock_out,
+          LPAD(EXTRACT(HOUR FROM a.clock_in)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(MINUTE FROM a.clock_in)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(SECOND FROM a.clock_in)::text, 2, '0') as clock_in,
+          LPAD(EXTRACT(HOUR FROM a.clock_out)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(MINUTE FROM a.clock_out)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(SECOND FROM a.clock_out)::text, 2, '0') as clock_out,
           a.location_name,
           a.status
         FROM attendance a
@@ -668,7 +672,7 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- MONTHLY ATTENDANCE - SEND RAW TIME ---------------- */
+/* ---------------- MONTHLY ATTENDANCE - FORCE RAW TIME ---------------- */
 
 app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) => {
   const { year, month } = req.params;
@@ -691,7 +695,7 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
       "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
     );
 
-    // Then get all attendance records for the month - SEND RAW TIME
+    // Get attendance records - FORCE RAW TIME by extracting components
     const attendanceRecords = await pool.query(
       `SELECT 
           a.id,
@@ -699,8 +703,12 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
           u.username,
           u.email as employee_email,
           TO_CHAR(a.date, 'YYYY-MM-DD') as date,
-          a.clock_in::text as clock_in,
-          a.clock_out::text as clock_out,
+          LPAD(EXTRACT(HOUR FROM a.clock_in)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(MINUTE FROM a.clock_in)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(SECOND FROM a.clock_in)::text, 2, '0') as clock_in,
+          LPAD(EXTRACT(HOUR FROM a.clock_out)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(MINUTE FROM a.clock_out)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(SECOND FROM a.clock_out)::text, 2, '0') as clock_out,
           a.location_name,
           a.status,
           a.is_absent,
@@ -716,7 +724,7 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
     
     // Log the first record's clock_in to verify
     if (attendanceRecords.rows.length > 0) {
-      console.log("⏰ First record raw clock_in from DB:", attendanceRecords.rows[0].clock_in);
+      console.log("⏰ First record clock_in from DB:", attendanceRecords.rows[0].clock_in);
     }
     
     res.json({
@@ -735,7 +743,6 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
     });
   }
 });
-
 /* ---------------- EMPLOYEE FULL HISTORY ---------------- */
 
 app.get("/admin/employee/:id/history", verifyAdmin, async (req, res) => {
@@ -827,7 +834,13 @@ app.get("/admin/test", verifyAdmin, (req, res) => {
 app.get("/admin/test-times", verifyAdmin, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, employee_id, date, clock_in, clock_out 
+      `SELECT id, employee_id, date, 
+          LPAD(EXTRACT(HOUR FROM clock_in)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(MINUTE FROM clock_in)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(SECOND FROM clock_in)::text, 2, '0') as clock_in,
+          LPAD(EXTRACT(HOUR FROM clock_out)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(MINUTE FROM clock_out)::text, 2, '0') || ':' || 
+          LPAD(EXTRACT(SECOND FROM clock_out)::text, 2, '0') as clock_out
        FROM attendance 
        ORDER BY id DESC 
        LIMIT 5`
