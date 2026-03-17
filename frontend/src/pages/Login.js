@@ -38,12 +38,15 @@ function Login() {
 
   // Check for existing session on component mount - runs immediately
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const user = localStorage.getItem("user");
-    const remember = localStorage.getItem("rememberMe") === "true";
-    
-    if (remember && token && user) {
-      navigate("/employee");
+    // Only redirect on the main login page, not on adminlogin
+    if (window.location.pathname === "/login") {
+      const token = localStorage.getItem("token");
+      const user = localStorage.getItem("user");
+      const remember = localStorage.getItem("rememberMe") === "true";
+      
+      if (remember && token && user) {
+        navigate("/employee");
+      }
     }
   }, [navigate]);
 

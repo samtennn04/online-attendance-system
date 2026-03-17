@@ -28,17 +28,20 @@ const AdminRoute = ({ children }) => {
 function App() {
   return (
     <Router>
-      <Routes>
-        <Route path="/employeeqr" element={<EmployeeQR />} />
-        <Route path="/adminqr" element={<AdminQR />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/adminlogin" element={<AdminLogin />} />
-        <Route path="/employee" element={<PrivateRoute><EmployeeDashboard /></PrivateRoute>} />
-        <Route path="/scan" element={<PrivateRoute><ScanAttendance /></PrivateRoute>} />
-        <Route path="/admindashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
+<Routes>
+  {/* Specific routes FIRST */}
+  <Route path="/adminlogin" element={<AdminLogin />} />
+  <Route path="/login" element={<Login />} />
+  <Route path="/register" element={<Register />} />
+  <Route path="/employeeqr" element={<EmployeeQR />} />
+  <Route path="/adminqr" element={<AdminQR />} />
+  <Route path="/employee" element={<PrivateRoute><EmployeeDashboard /></PrivateRoute>} />
+  <Route path="/scan" element={<PrivateRoute><ScanAttendance /></PrivateRoute>} />
+  <Route path="/admindashboard" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+  
+  {/* Catch-all route LAST */}
+  <Route path="*" element={<Navigate to="/login" replace />} />
+</Routes>
     </Router>
   );
 }
