@@ -26,8 +26,8 @@ app.use((req, res, next) => {
   next();
 });
 
-const PORT = 5000;
-const JWT_SECRET = "secretkey";
+const PORT = process.env.PORT || 5000;
+const JWT_SECRET = process.env.JWT_SECRET;
 
 /* ---------------- MYSQL CONNECTION ---------------- */
 
