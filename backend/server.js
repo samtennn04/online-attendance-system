@@ -468,7 +468,8 @@ app.get("/admin/employees", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- TODAY'S ATTENDANCE - FIXED: NO CONVERSION NEEDED ---------------- */
+
+/* ---------------- TODAY'S ATTENDANCE - SEND RAW TIME ---------------- */
 
 app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
@@ -479,15 +480,15 @@ app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
       "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
     );
 
-    // Then get today's attendance - times are already in IST
+    // Then get today's attendance - SEND RAW TIME
     const attendance = await pool.query(
       `SELECT 
           a.id,
           a.employee_id,
           u.username,
           TO_CHAR(a.date, 'YYYY-MM-DD') as date,
-          TO_CHAR(a.clock_in, 'HH24:MI:SS') as clock_in,
-          TO_CHAR(a.clock_out, 'HH24:MI:SS') as clock_out,
+          a.clock_in::text as clock_in,
+          a.clock_out::text as clock_out,
           a.location_name,
           a.status
         FROM attendance a
@@ -497,7 +498,6 @@ app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
       [today]
     );
     
-    // NO CONVERSION NEEDED - times are already in IST
     res.json({
       success: true,
       date: today,
@@ -640,7 +640,8 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- MONTHLY ATTENDANCE - FIXED: NO CONVERSION NEEDED ---------------- */
+
+/* ---------------- MONTHLY ATTENDANCE - FIXED: SEND RAW TIME ---------------- */
 
 app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) => {
   const { year, month } = req.params;
@@ -663,7 +664,7 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
       "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
     );
 
-    // Then get all attendance records for the month
+    // Then get all attendance records for the month - SEND RAW TIME
     const attendanceRecords = await pool.query(
       `SELECT 
           a.id,
@@ -671,8 +672,8 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
           u.username,
           u.email as employee_email,
           TO_CHAR(a.date, 'YYYY-MM-DD') as date,
-          TO_CHAR(a.clock_in, 'HH24:MI:SS') as clock_in,
-          TO_CHAR(a.clock_out, 'HH24:MI:SS') as clock_out,
+          a.clock_in::text as clock_in,  -- Send raw time as text
+          a.clock_out::text as clock_out, -- Send raw time as text
           a.location_name,
           a.status,
           a.is_absent,
@@ -684,8 +685,12 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
       [yearNum, monthNum]
     );
     
-    // NO CONVERSION NEEDED - times are already in IST
     console.log(`✅ Found ${attendanceRecords.rows.length} attendance records for ${year}-${month}`);
+    
+    // Log the first record's clock_in to verify
+    if (attendanceRecords.rows.length > 0) {
+      console.log("⏰ First record raw clock_in from DB:", attendanceRecords.rows[0].clock_in);
+    }
     
     res.json({
       success: true,
