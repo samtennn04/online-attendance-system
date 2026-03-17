@@ -286,22 +286,22 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
 const getISTTime = () => {
   const now = new Date();
   
-  // Get UTC time
+  // Get UTC time components
   const utcHours = now.getUTCHours();
   const utcMinutes = now.getUTCMinutes();
   const utcSeconds = now.getUTCSeconds();
   
-  // Convert to IST (UTC+5:30)
+  // IST is UTC+5:30
   let istHours = utcHours + 5;
   let istMinutes = utcMinutes + 30;
   
-  // Handle minute overflow
+  // Handle minute overflow (if minutes >= 60)
   if (istMinutes >= 60) {
     istMinutes -= 60;
     istHours += 1;
   }
   
-  // Handle hour overflow
+  // Handle hour overflow (if hours >= 24)
   if (istHours >= 24) {
     istHours -= 24;
   }
@@ -311,7 +311,11 @@ const getISTTime = () => {
   const formattedMinutes = String(istMinutes).padStart(2, '0');
   const formattedSeconds = String(utcSeconds).padStart(2, '0');
   
-  return `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+  const istTimeString = `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+  
+  console.log(`🕒 UTC Time: ${utcHours}:${utcMinutes}:${utcSeconds} → IST Time: ${istTimeString}`);
+  
+  return istTimeString;
 };
 
 /* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
@@ -379,6 +383,8 @@ app.post("/attendance", verifyToken, async (req, res) => {
   const today = new Date().toISOString().split("T")[0];
   // Use IST time instead of UTC
   const time = getISTTime();
+  
+  console.log(`⏰ Time being stored in database: ${time}`);
 
   console.log("=".repeat(50));
   console.log(`📝 Processing attendance for user ${userId} on ${today} at ${time} IST`);
@@ -408,10 +414,9 @@ app.post("/attendance", verifyToken, async (req, res) => {
     const incompleteRecord = records.rows.find(r => r.clock_in && !r.clock_out);
 
     if (incompleteRecord) {
-      // This is CLOCK OUT - FIXED WITH TYPE CASTING
+      // This is CLOCK OUT
       console.log(`✅ Found incomplete record ID ${incompleteRecord.id} - Processing clock out`);
       
-      // FIX: Explicitly cast parameters to proper types
       await pool.query(
         `UPDATE attendance 
          SET clock_out = $1::time, 
@@ -491,7 +496,6 @@ app.get("/admin/employees", verifyAdmin, async (req, res) => {
     res.status(500).json({ message: "Error fetching employees" });
   }
 });
-
 
 /* ---------------- TODAY'S ATTENDANCE - SEND RAW TIME ---------------- */
 
@@ -591,7 +595,7 @@ const markAbsentEmployees = async (date) => {
   }
 };
 
-/* ---------------- END OF DAY REPORT - FIXED: NO CONVERSION NEEDED ---------------- */
+/* ---------------- END OF DAY REPORT ---------------- */
 
 app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
   const { date } = req.body;
@@ -625,7 +629,7 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
       [targetDate]
     );
 
-    // Format the results - NO CONVERSION NEEDED
+    // Format the results
     const report = results.rows.map(row => ({
       employee_id: row.employee_id,
       username: row.username,
@@ -664,8 +668,7 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
   }
 });
 
-
-/* ---------------- MONTHLY ATTENDANCE - FIXED: SEND RAW TIME ---------------- */
+/* ---------------- MONTHLY ATTENDANCE - SEND RAW TIME ---------------- */
 
 app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) => {
   const { year, month } = req.params;
@@ -696,8 +699,8 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
           u.username,
           u.email as employee_email,
           TO_CHAR(a.date, 'YYYY-MM-DD') as date,
-          a.clock_in::text as clock_in,  -- Send raw time as text
-          a.clock_out::text as clock_out, -- Send raw time as text
+          a.clock_in::text as clock_in,
+          a.clock_out::text as clock_out,
           a.location_name,
           a.status,
           a.is_absent,
@@ -733,7 +736,7 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
   }
 });
 
-/* ---------------- EMPLOYEE FULL HISTORY - FIXED: NO CONVERSION NEEDED ---------------- */
+/* ---------------- EMPLOYEE FULL HISTORY ---------------- */
 
 app.get("/admin/employee/:id/history", verifyAdmin, async (req, res) => {
   const employeeId = req.params.id;
@@ -756,19 +759,18 @@ app.get("/admin/employee/:id/history", verifyAdmin, async (req, res) => {
       `SELECT 
           id,
           TO_CHAR(date, 'YYYY-MM-DD') as date,
-          TO_CHAR(clock_in, 'HH24:MI:SS') as clock_in,
-          TO_CHAR(clock_out, 'HH24:MI:SS') as clock_out,
+          a.clock_in::text as clock_in,
+          a.clock_out::text as clock_out,
           location_name,
           status,
           is_absent,
           created_at as record_created_at
-         FROM attendance 
+         FROM attendance a
          WHERE employee_id = $1
          ORDER BY date DESC, created_at DESC`,
       [employeeId]
     );
 
-    // NO CONVERSION NEEDED - times are already in IST
     res.json({
       employee,
       attendance: attendanceResult.rows,
@@ -819,6 +821,31 @@ app.get("/admin/test", verifyAdmin, (req, res) => {
       "/admin/end-of-day"
     ]
   });
+});
+
+/* ---------------- TEST ENDPOINT TO CHECK DATABASE TIMES ---------------- */
+app.get("/admin/test-times", verifyAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, employee_id, date, clock_in, clock_out 
+       FROM attendance 
+       ORDER BY id DESC 
+       LIMIT 5`
+    );
+    
+    console.log("📋 Last 5 attendance records from DB:");
+    result.rows.forEach(row => {
+      console.log(`ID ${row.id}: date=${row.date}, clock_in=${row.clock_in}, clock_out=${row.clock_out}`);
+    });
+    
+    res.json({
+      success: true,
+      records: result.rows
+    });
+  } catch (err) {
+    console.error("Error fetching test times:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* ---------------- GET DATE RANGE OF ATTENDANCE RECORDS ---------------- */
@@ -1107,6 +1134,7 @@ app.listen(PORT, () => {
   console.log("   GET /attendance/status");
   console.log("\n   👑 ADMIN (requires token):");
   console.log("   GET /admin/test");
+  console.log("   GET /admin/test-times");
   console.log("   GET /admin/employees");
   console.log("   GET /admin/attendance/today");
   console.log("   GET /admin/attendance/monthly/:year/:month");
