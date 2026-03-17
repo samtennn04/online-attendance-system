@@ -6,7 +6,7 @@ import axios from "axios";
 import { FaArrowLeft, FaQrcode, FaCamera } from "react-icons/fa";
 import { MdLocationOn, MdRefresh } from "react-icons/md";
 
-const API_URL = "https://nonshredding-claudine-opulently.ngrok-free.dev";
+const API_URL = "https://online-attendance-system-1-cbgc.onrender.com";
 
 // Create axios instance with default headers to bypass ngrok warning
 const api = axios.create({
@@ -15,7 +15,7 @@ const api = axios.create({
     'ngrok-skip-browser-warning': 'true',
     'Content-Type': 'application/json'
   },
-  timeout: 10000
+  timeout: 15000 // Increased timeout for sleepy backend
 });
 
 // Color palette
@@ -53,6 +53,7 @@ function ScanAttendance() {
   });
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [backendAwake, setBackendAwake] = useState(false);
 
   const qrCodeRegionId = "qr-reader";
   const html5QrCodeRef = useRef(null);
@@ -62,6 +63,29 @@ function ScanAttendance() {
   const scannerInitializedRef = useRef(false);
 
   const token = localStorage.getItem("token");
+
+  // Wake up backend function
+  const wakeUpBackend = useCallback(async () => {
+    try {
+      console.log("🔄 Attempting to wake up backend...");
+      setStatus("Connecting to server...");
+      
+      const response = await axios.get(`${API_URL}`, { 
+        timeout: 30000,
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
+      
+      console.log("✅ Backend is awake:", response.status, response.data);
+      setBackendAwake(true);
+      setStatus("Connected to server");
+      return true;
+    } catch (err) {
+      console.log("⚠️ Backend wake-up attempt:", err.message);
+      setBackendAwake(false);
+      setStatus("Server connection issue");
+      return false;
+    }
+  }, []);
 
   // Navigate to employee dashboard
   const goToEmployeeDashboard = useCallback(() => {
@@ -108,6 +132,9 @@ function ScanAttendance() {
       }
 
       setLoading(true);
+      
+      // Wake up backend first
+      await wakeUpBackend();
       
       try {
         // Check server status
@@ -185,7 +212,7 @@ function ScanAttendance() {
     };
 
     initialize();
-  }, [token, navigate, checkAttendanceStatus, goToEmployeeDashboard]);
+  }, [token, navigate, checkAttendanceStatus, goToEmployeeDashboard, wakeUpBackend]);
 
   // Handle successful scan
   const handleSuccessfulScan = useCallback(async (action, location) => {
@@ -392,6 +419,10 @@ function ScanAttendance() {
       const scanSuccessCallback = async (decodedText) => {
         if (scanningRef.current || alertShownRef.current || processing) return;
         
+        console.log("🔍 QR Code detected:", decodedText);
+        console.log("🔑 Token exists:", !!token);
+        console.log("🌐 API_URL:", API_URL);
+        
         // Double-check status before processing
         if (attendanceStatus.hasClockedOut) {
           const formattedDate = new Date().toLocaleDateString('en-GB', {
@@ -417,7 +448,8 @@ function ScanAttendance() {
             return;
           }
 
-          console.log("Sending attendance request with:", { latitude, longitude });
+          console.log("📤 Sending attendance request to:", `${API_URL}/attendance`);
+          console.log("📦 Request data:", { qrData: decodedText, latitude, longitude });
 
           // Send attendance request to server using api instance
           const response = await api.post('/attendance', 
@@ -429,11 +461,12 @@ function ScanAttendance() {
             { 
               headers: { 
                 Authorization: `Bearer ${token}`
-              }
+              },
+              timeout: 15000 // 15 second timeout
             }
           );
 
-          console.log("Attendance response:", response.data);
+          console.log("📥 Response received:", response.data);
 
           if (response.data.success) {
             await handleSuccessfulScan(
@@ -445,7 +478,7 @@ function ScanAttendance() {
           }
           
         } catch (err) {
-          console.error('Scan error details:', err);
+          console.error('❌ Scan error details:', err);
           
           setProcessing(false);
           scanningRef.current = false;
@@ -453,7 +486,12 @@ function ScanAttendance() {
           
           let errorMsg = "Unable to process attendance. Please try again.";
           
-          if (err.response) {
+          if (err.code === 'ECONNABORTED') {
+            errorMsg = "Connection timeout. Server is waking up. Please try again in 30 seconds.";
+            console.log("⏱️ Request timeout - backend might be sleeping");
+            // Try to wake up backend again
+            wakeUpBackend();
+          } else if (err.response) {
             // The request was made and the server responded with a status code
             errorMsg = err.response.data?.message || err.message;
             console.log("Server responded with error:", err.response.status, err.response.data);
@@ -485,7 +523,11 @@ function ScanAttendance() {
           } else if (err.request) {
             // The request was made but no response was received
             errorMsg = "Cannot connect to server. Please check your connection.";
+            console.log("📡 No response from server - network issue");
             alert(`❌ ${errorMsg}`);
+            
+            // Try to wake up backend
+            wakeUpBackend();
           } else {
             // Something happened in setting up the request
             errorMsg = err.message;
@@ -538,7 +580,7 @@ function ScanAttendance() {
         }, 1000);
       }
     }
-  }, [token, handleSuccessfulScan, handleScanError, retryCount, stopScannerAndGoToDashboard, attendanceStatus.hasClockedOut, processing, navigate]);
+  }, [token, handleSuccessfulScan, handleScanError, retryCount, stopScannerAndGoToDashboard, attendanceStatus.hasClockedOut, processing, navigate, wakeUpBackend]);
 
   // Initialize scanner after status check
   useEffect(() => {
@@ -582,6 +624,7 @@ function ScanAttendance() {
 
   // Determine what message to show
   const getInstructionMessage = () => {
+    if (!backendAwake) return "Connecting to server...";
     if (cameraError) return "Camera unavailable";
     if (attendanceStatus.hasClockedOut) return "✓ Today's attendance completed";
     if (attendanceStatus.hasClockedIn) return "Scan to Clock Out";
@@ -605,12 +648,12 @@ function ScanAttendance() {
         <div style={styles.backgroundOverlay}></div>
       </div>
 
-      {/* Back Button - MOVED DOWN */}
+      {/* Back Button */}
       <button onClick={handleBack} style={styles.backButton}>
         <FaArrowLeft size={20} color={colors.primary} />
       </button>
 
-      {/* Main Card - MOVED DOWN */}
+      {/* Main Card */}
       <div style={styles.card}>
         {/* Header */}
         <div style={styles.header}>
@@ -658,6 +701,13 @@ function ScanAttendance() {
             </span>
           </div>
         </div>
+
+        {/* Backend Status Indicator */}
+        {!backendAwake && (
+          <div style={styles.warningContainer}>
+            <p style={styles.warningText}>⚠️ Connecting to server. Please wait...</p>
+          </div>
+        )}
 
         {/* Success Message */}
         {scanSuccess && (
@@ -725,7 +775,7 @@ function ScanAttendance() {
   );
 }
 
-// Styles - UPDATED with new positioning
+// Styles
 const styles = {
   container: {
     position: "fixed",
@@ -794,7 +844,7 @@ const styles = {
 
   backButton: {
     position: "fixed",
-    top: "36px", // Increased from 16px to move down
+    top: "36px",
     left: "16px",
     width: "40px",
     height: "40px",
@@ -812,7 +862,7 @@ const styles = {
 
   card: {
     position: "fixed",
-    top: "55%", // Increased from 50% to move down
+    top: "55%",
     left: "50%",
     transform: "translate(-50%, -50%)",
     width: "380px",
@@ -875,6 +925,21 @@ const styles = {
     fontSize: "11px",
     color: colors.danger,
     textAlign: "center",
+  },
+
+  warningContainer: {
+    marginBottom: "12px",
+    padding: "8px",
+    backgroundColor: "#fff3cd",
+    borderRadius: "20px",
+    border: `1px solid ${colors.warning}`,
+  },
+
+  warningText: {
+    fontSize: "11px",
+    color: colors.warning,
+    textAlign: "center",
+    fontWeight: "500",
   },
 
   statusBar: {
