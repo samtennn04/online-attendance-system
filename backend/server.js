@@ -261,7 +261,8 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
         clockInTime: incompleteRecord?.clock_in,
         message: "Clocked in, ready for clock out",
         canClockIn: false,
-        canClockOut: true
+        canClockOut: true,
+        recordId: incompleteRecord.id
       });
     } else {
       return res.json({ 
@@ -279,7 +280,16 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
   }
 });
 
-/* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
+/* ---------------- HELPER FUNCTION FOR IST TIME ---------------- */
+
+// Helper function to get IST time (UTC+5:30)
+const getISTTime = () => {
+  const now = new Date();
+  // Convert to IST (UTC+5:30)
+  const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+  return istTime.toTimeString().split(" ")[0];
+};
+
 /* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
 
 app.post("/attendance", verifyToken, async (req, res) => {
@@ -343,11 +353,11 @@ app.post("/attendance", verifyToken, async (req, res) => {
   }
 
   const today = new Date().toISOString().split("T")[0];
-  const now = new Date();
-  const time = now.toTimeString().split(" ")[0];
+  // Use IST time instead of UTC
+  const time = getISTTime();
 
   console.log("=".repeat(50));
-  console.log(`📝 Processing attendance for user ${userId} on ${today} at ${time}`);
+  console.log(`📝 Processing attendance for user ${userId} on ${today} at ${time} IST`);
   console.log(`📍 Location: ${location}`);
 
   try {
@@ -387,7 +397,7 @@ app.post("/attendance", verifyToken, async (req, res) => {
         [time, location, incompleteRecord.id]
       );
       
-      console.log(`✅ Clock out successful for user ${userId}`);
+      console.log(`✅ Clock out successful for user ${userId} at ${time} IST`);
       
       res.json({ 
         success: true,
@@ -409,7 +419,7 @@ app.post("/attendance", verifyToken, async (req, res) => {
         [userId, today, time, latitude, longitude, location]
       );
       
-      console.log(`✅ Clock in successful for user ${userId}`);
+      console.log(`✅ Clock in successful for user ${userId} at ${time} IST`);
       
       res.json({ 
         success: true,
@@ -428,6 +438,7 @@ app.post("/attendance", verifyToken, async (req, res) => {
     });
   }
 });
+
 /* ---------------- ADMIN LOGIN ---------------- */
 
 app.post("/auth/admin-login", (req, res) => {
