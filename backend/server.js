@@ -280,6 +280,7 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
 });
 
 /* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
+/* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
 
 app.post("/attendance", verifyToken, async (req, res) => {
   const { qrData, latitude, longitude } = req.body;
@@ -297,32 +298,32 @@ app.post("/attendance", verifyToken, async (req, res) => {
         `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${process.env.GEOCODE_KEY}`
       );
       const comp = geo.data.results[0]?.components;
-      
+
       let road = comp.road || "";
       if (road) {
         road = road.replace(/\d+/g, '').replace(/\s+/g, ' ').trim();
-        road = road.toLowerCase().split(' ').map(word => 
+        road = road.toLowerCase().split(' ').map(word =>
           word.charAt(0).toUpperCase() + word.slice(1)
         ).join(' ');
       }
-      
+
       const place = comp.suburb || comp.neighbourhood || comp.quarter || comp.area || "";
-      const formattedPlace = place ? place.toLowerCase().split(' ').map(word => 
+      const formattedPlace = place ? place.toLowerCase().split(' ').map(word =>
         word.charAt(0).toUpperCase() + word.slice(1)
       ).join(' ') : "";
-      
+
       const city = comp.city || comp.town || comp.village || "";
-      const formattedCity = city ? city.toLowerCase().split(' ').map(word => 
+      const formattedCity = city ? city.toLowerCase().split(' ').map(word =>
         word.charAt(0).toUpperCase() + word.slice(1)
       ).join(' ') : "";
-      
+
       const addressParts = [];
       if (road) addressParts.push(road);
       if (formattedPlace) addressParts.push(formattedPlace);
       if (formattedCity) addressParts.push(formattedCity);
-      
+
       location = addressParts.join(", ");
-      
+
       if (location === "") {
         const allParts = [
           comp.road,
@@ -373,13 +374,14 @@ app.post("/attendance", verifyToken, async (req, res) => {
     const incompleteRecord = records.rows.find(r => r.clock_in && !r.clock_out);
 
     if (incompleteRecord) {
-      // This is CLOCK OUT
+      // This is CLOCK OUT - FIXED WITH TYPE CASTING
       console.log(`✅ Found incomplete record ID ${incompleteRecord.id} - Processing clock out`);
       
+      // FIX: Explicitly cast parameters to proper types
       await pool.query(
         `UPDATE attendance 
-         SET clock_out = $1, 
-             location_name = CONCAT(location_name, ' → ', $2), 
+         SET clock_out = $1::time, 
+             location_name = CONCAT(location_name, ' → ', $2::text), 
              status = 'present'
          WHERE id = $3`,
         [time, location, incompleteRecord.id]
@@ -392,16 +394,18 @@ app.post("/attendance", verifyToken, async (req, res) => {
         message: "Clock Out Successful", 
         location: location,
         time: time,
-        action: "clock_out"
+        action: "clock_out",
+        recordId: incompleteRecord.id
       });
     } else {
       // No incomplete record found - This is CLOCK IN
       console.log("✅ No incomplete records found - Creating clock in");
       
-      await pool.query(
+      const result = await pool.query(
         `INSERT INTO attendance 
          (employee_id, date, clock_in, latitude, longitude, location_name, status, is_absent) 
-         VALUES ($1, $2, $3, $4, $5, $6, 'present', false)`,
+         VALUES ($1, $2, $3::time, $4, $5, $6, 'present', false)
+         RETURNING id`,
         [userId, today, time, latitude, longitude, location]
       );
       
@@ -412,15 +416,18 @@ app.post("/attendance", verifyToken, async (req, res) => {
         message: "Clock In Successful", 
         location: location,
         time: time,
-        action: "clock_in"
+        action: "clock_in",
+        recordId: result.rows[0].id
       });
     }
   } catch (err) {
     console.error("Attendance error:", err);
-    res.status(500).json({ success: false, message: "Database error" });
+    res.status(500).json({ 
+      success: false, 
+      message: "Database error"
+    });
   }
 });
-
 /* ---------------- ADMIN LOGIN ---------------- */
 
 app.post("/auth/admin-login", (req, res) => {
