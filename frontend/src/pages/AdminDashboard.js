@@ -164,24 +164,31 @@ const fetchAttendance = useCallback(async (year, month) => {
   if (!token) return [];
 
   try {
+    console.log(`📡 Fetching attendance for ${year}-${month}...`);
+    
     const response = await api.get(`/admin/attendance/monthly/${year}/${month}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
+    console.log("✅ API Response received");
+    console.log("📊 Attendance data:", response.data.attendance);
+    
     if (response.data.success) {
-      console.log(`✅ Fetched ${response.data.attendance.length} attendance records for ${year}-${month}`);
+      console.log(`✅ Fetched ${response.data.attendance.length} records`);
       
-      // DEBUG: Log raw times from backend
-      if (response.data.attendance.length > 0) {
-        console.log("🔍 Raw clock_in from backend:", response.data.attendance[0].clock_in);
-        console.log("🔍 Raw clock_out from backend:", response.data.attendance[0].clock_out);
-      }
+      // Format the times for display
+      const formattedAttendance = response.data.attendance.map(record => ({
+        ...record,
+        // Keep raw times but add formatted version if needed
+        display_clock_in: record.clock_in,
+        display_clock_out: record.clock_out
+      }));
       
-      return response.data.attendance || [];
+      return formattedAttendance || [];
     }
     return [];
   } catch (err) {
-    console.error("Error fetching attendance:", err);
+    console.error("❌ Error fetching attendance:", err);
     return [];
   }
 }, []);
