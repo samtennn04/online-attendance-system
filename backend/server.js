@@ -1,13 +1,12 @@
 require('dotenv').config();
 const path = require('path');
 const express = require("express");
-const db = require("./db");
-const mysql = require("mysql2");
+const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
 const axios = require("axios");
-const cron = require('node-cron'); // Added for automatic scheduling
+const cron = require('node-cron');
 
 const app = express();
 
@@ -27,28 +26,74 @@ app.use((req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || "secretkey";
 
-/* ---------------- MYSQL CONNECTION ---------------- */
+/* ---------------- POSTGRESQL CONNECTION ---------------- */
 
-// const db = mysql.createConnection({
-//   host: process.env.DB_HOST,
-//   user: process.env.DB_USER,
-//   password: process.env.DB_PASSWORD,
-//   database: process.env.DB_NAME
-// });
+const pool = new Pool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT || 5432,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
 
-// const db = mysql.createConnection({
-//   host: "localhost",
-//   user: "root",
-//   password: "Samsam04!",
-//   database: "attendance_system"
-// });
+// Test database connection and create tables
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error('❌ Database connection failed:', err);
+  } else {
+    console.log('✅ Connected to PostgreSQL database');
+    release();
+    createTables();
+  }
+});
 
-// db.connect(err => {
-//   if (err) console.log("DB error:", err);
-//   else console.log("MySQL Connected");
-// });
+// Create tables if they don't exist
+const createTables = async () => {
+  try {
+    // Create users table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'employee',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ Users table ready');
+
+    // Create attendance table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS attendance (
+        id SERIAL PRIMARY KEY,
+        employee_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        clock_in TIME,
+        clock_out TIME,
+        latitude DECIMAL(10,8),
+        longitude DECIMAL(11,8),
+        location_name TEXT,
+        status VARCHAR(50) DEFAULT 'present',
+        is_absent BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ Attendance table ready');
+
+    // Create index for better performance
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_attendance_employee_date 
+      ON attendance(employee_id, date)
+    `);
+    console.log('✅ Indexes created');
+  } catch (err) {
+    console.error('❌ Error creating tables:', err);
+  }
+};
 
 /* ---------------- REGISTER ---------------- */
 
@@ -64,69 +109,82 @@ app.post("/auth/register", async (req, res) => {
   }
 
   if (password.length < 8) {
-    return res.status(400).json({ message: "Password must be 8 characters" });
+    return res.status(400).json({ message: "Password must be at least 8 characters" });
   }
 
-  const hash = await bcrypt.hash(password, 10);
-
-  db.query(
-    "INSERT INTO users (username, email, password, created_at) VALUES (?, ?, ?, NOW())",
-    [username, email, hash],
-    (err) => {
-      if (err) {
-        if (err.code === "ER_DUP_ENTRY") {
-          return res.status(400).json({ message: "Email already registered" });
-        }
-        return res.status(500).json({ message: "Registration failed" });
-      }
-      res.json({ message: "User registered successfully" });
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    
+    await pool.query(
+      "INSERT INTO users (username, email, password, created_at) VALUES ($1, $2, $3, NOW())",
+      [username, email, hash]
+    );
+    
+    res.json({ 
+      success: true,
+      message: "User registered successfully"
+    });
+  } catch (err) {
+    console.error('Registration error:', err);
+    if (err.code === '23505') { // PostgreSQL duplicate key error
+      return res.status(400).json({ message: "Email already registered" });
     }
-  );
+    res.status(500).json({ message: "Registration failed" });
+  }
 });
 
 /* ---------------- LOGIN ---------------- */
 
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
-  db.query(
-    "SELECT * FROM users WHERE email=?",
-    [email],
-    async (err, result) => {
-      if (result.length === 0) {
-        return res.status(401).json({ message: "User not found" });
-      }
+  try {
+    const result = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      [email]
+    );
 
-      const user = result[0];
-      const valid = await bcrypt.compare(password, user.password);
-
-      if (!valid) {
-        return res.status(401).json({ message: "Wrong password" });
-      }
-
-      const token = jwt.sign(
-        { id: user.id, username: user.username, role: user.role || "employee" },
-        JWT_SECRET,
-        { expiresIn: "1d" }
-      );
-
-      res.json({
-        token,
-        user: { id: user.id, username: user.username, role: user.role || "employee" }
-      });
+    if (result.rows.length === 0) {
+      return res.status(401).json({ message: "User not found" });
     }
-  );
+
+    const user = result.rows[0];
+    const valid = await bcrypt.compare(password, user.password);
+
+    if (!valid) {
+      return res.status(401).json({ message: "Wrong password" });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, username: user.username, role: user.role || "employee" },
+      JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.json({
+      success: true,
+      token,
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        role: user.role || "employee" 
+      }
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ message: "Login failed" });
+  }
 });
 
 /* ---------------- JWT VERIFY ---------------- */
 
 function verifyToken(req, res, next) {
   const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ message: "No token" });
+  if (!auth) return res.status(401).json({ message: "No token provided" });
 
   const token = auth.split(" ")[1];
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(403).json({ message: "Invalid token" });
+    if (err) return res.status(403).json({ message: "Invalid or expired token" });
     req.user = decoded;
     next();
   });
@@ -136,96 +194,92 @@ function verifyToken(req, res, next) {
 
 function verifyAdmin(req, res, next) {
   const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ message: "No token" });
+  if (!auth) return res.status(401).json({ message: "No token provided" });
 
   const token = auth.split(" ")[1];
   jwt.verify(token, JWT_SECRET, (err, decoded) => {
-    if (err) return res.status(403).json({ message: "Invalid token" });
+    if (err) return res.status(403).json({ message: "Invalid or expired token" });
     if (decoded.role !== "admin") {
-      return res.status(403).json({ message: "Access denied" });
+      return res.status(403).json({ message: "Access denied. Admin only." });
     }
     req.user = decoded;
     next();
   });
 }
 
-/* ---------------- ATTENDANCE STATUS CHECK - FIXED ---------------- */
+/* ---------------- ATTENDANCE STATUS CHECK ---------------- */
 
-app.get("/attendance/status", verifyToken, (req, res) => {
+app.get("/attendance/status", verifyToken, async (req, res) => {
   const userId = req.user.id;
   const today = new Date().toISOString().split('T')[0];
   
   console.log(`📊 Checking attendance status for user ${userId} on ${today}`);
   
-  db.query(
-    "SELECT * FROM attendance WHERE employee_id = ? AND date = ? ORDER BY id",
-    [userId, today],
-    (err, results) => {
-      if (err) {
-        console.error("Error checking attendance status:", err);
-        return res.status(500).json({ error: "Database error" });
-      }
-      
-      console.log(`📊 Found ${results.length} records for today`);
-      
-      if (results.length === 0) {
-        // No records today
-        return res.json({ 
-          status: "not_started",
-          hasClockedIn: false, 
-          hasClockedOut: false,
-          message: "Not clocked in yet",
-          canClockIn: true,
-          canClockOut: false
-        });
-      }
-      
-      // Check if there's a record with clock_in but no clock_out
-      const hasIncomplete = results.some(r => r.clock_in && !r.clock_out);
-      
-      // Check if there's a completed record (both clock_in and clock_out)
-      const hasCompleted = results.some(r => r.clock_in && r.clock_out);
-      
-      if (hasCompleted) {
-        // Already completed attendance for today
-        return res.json({ 
-          status: "completed",
-          hasClockedIn: true, 
-          hasClockedOut: true,
-          clockInTime: results.find(r => r.clock_in)?.clock_in,
-          clockOutTime: results.find(r => r.clock_out)?.clock_out,
-          message: "Attendance already completed for today",
-          canClockIn: false,
-          canClockOut: false
-        });
-      } else if (hasIncomplete) {
-        // Has clocked in but not out
-        const incompleteRecord = results.find(r => r.clock_in && !r.clock_out);
-        return res.json({ 
-          status: "clocked_in",
-          hasClockedIn: true, 
-          hasClockedOut: false,
-          clockInTime: incompleteRecord?.clock_in,
-          message: "Clocked in, ready for clock out",
-          canClockIn: false,
-          canClockOut: true
-        });
-      } else {
-        // Has some other record (shouldn't happen, but just in case)
-        return res.json({ 
-          status: "unknown",
-          hasClockedIn: results.some(r => r.clock_in), 
-          hasClockedOut: results.some(r => r.clock_out),
-          message: "Unknown attendance status",
-          canClockIn: !results.some(r => r.clock_in),
-          canClockOut: results.some(r => r.clock_in) && !results.some(r => r.clock_out)
-        });
-      }
+  try {
+    const result = await pool.query(
+      "SELECT * FROM attendance WHERE employee_id = $1 AND date = $2 ORDER BY id",
+      [userId, today]
+    );
+    
+    console.log(`📊 Found ${result.rows.length} records for today`);
+    
+    if (result.rows.length === 0) {
+      return res.json({ 
+        status: "not_started",
+        hasClockedIn: false, 
+        hasClockedOut: false,
+        message: "Not clocked in yet",
+        canClockIn: true,
+        canClockOut: false
+      });
     }
-  );
+    
+    // Check if there's a record with clock_in but no clock_out
+    const hasIncomplete = result.rows.some(r => r.clock_in && !r.clock_out);
+    
+    // Check if there's a completed record (both clock_in and clock_out)
+    const hasCompleted = result.rows.some(r => r.clock_in && r.clock_out);
+    
+    if (hasCompleted) {
+      const completedRecord = result.rows.find(r => r.clock_in && r.clock_out);
+      return res.json({ 
+        status: "completed",
+        hasClockedIn: true, 
+        hasClockedOut: true,
+        clockInTime: completedRecord?.clock_in,
+        clockOutTime: completedRecord?.clock_out,
+        message: "Attendance already completed for today",
+        canClockIn: false,
+        canClockOut: false
+      });
+    } else if (hasIncomplete) {
+      const incompleteRecord = result.rows.find(r => r.clock_in && !r.clock_out);
+      return res.json({ 
+        status: "clocked_in",
+        hasClockedIn: true, 
+        hasClockedOut: false,
+        clockInTime: incompleteRecord?.clock_in,
+        message: "Clocked in, ready for clock out",
+        canClockIn: false,
+        canClockOut: true
+      });
+    } else {
+      return res.json({ 
+        status: "unknown",
+        hasClockedIn: result.rows.some(r => r.clock_in), 
+        hasClockedOut: result.rows.some(r => r.clock_out),
+        message: "Unknown attendance status",
+        canClockIn: !result.rows.some(r => r.clock_in),
+        canClockOut: result.rows.some(r => r.clock_in) && !result.rows.some(r => r.clock_out)
+      });
+    }
+  } catch (err) {
+    console.error("Error checking attendance status:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
-/* ---------------- ATTENDANCE WITH LOCATION FORMATTING - FIXED ---------------- */
+/* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
 
 app.post("/attendance", verifyToken, async (req, res) => {
   const { qrData, latitude, longitude } = req.body;
@@ -240,8 +294,8 @@ app.post("/attendance", verifyToken, async (req, res) => {
   try {
     if (latitude && longitude && latitude !== 0 && longitude !== 0) {
       const geo = await axios.get(
-  `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${process.env.GEOCODE_KEY}`
-);
+        `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${process.env.GEOCODE_KEY}`
+      );
       const comp = geo.data.results[0]?.components;
       
       let road = comp.road || "";
@@ -295,93 +349,76 @@ app.post("/attendance", verifyToken, async (req, res) => {
   console.log(`📝 Processing attendance for user ${userId} on ${today} at ${time}`);
   console.log(`📍 Location: ${location}`);
 
-  // Check if attendance already exists for today
-  db.query(
-    "SELECT * FROM attendance WHERE employee_id=? AND date=? ORDER BY id",
-    [userId, today],
-    (err, records) => {
-      if (err) {
-        console.error("Error checking attendance:", err);
-        return res.status(500).json({ success: false, message: "Database error" });
-      }
+  try {
+    // Check if attendance already exists for today
+    const records = await pool.query(
+      "SELECT * FROM attendance WHERE employee_id = $1 AND date = $2 ORDER BY id",
+      [userId, today]
+    );
 
-      console.log(`📊 Found ${records.length} records for today`);
+    console.log(`📊 Found ${records.rows.length} records for today`);
 
-      // Check if there's already a completed record (both clock_in and clock_out)
-      const completedRecord = records.find(r => r.clock_in && r.clock_out);
-      
-      if (completedRecord) {
-        console.log(`⚠️ Employee ${userId} has already completed attendance for today`);
-        return res.status(400).json({ 
-          success: false,
-          message: "You have already completed your attendance for today"
-        });
-      }
-
-      // Check if there's an incomplete record (clock_in but no clock_out)
-      const incompleteRecord = records.find(r => r.clock_in && !r.clock_out);
-
-      if (incompleteRecord) {
-        // This is CLOCK OUT
-        console.log(`✅ Found incomplete record ID ${incompleteRecord.id} - Processing clock out`);
-        
-        db.query(
-          `UPDATE attendance 
-          SET clock_out=?, location_name=CONCAT(location_name, ' → ', ?), status='present'
-          WHERE id=?`,
-          [time, location, incompleteRecord.id],
-          (err, result) => {
-            if (err) {
-              console.error("Clock out error:", err);
-              return res.status(500).json({ 
-                success: false,
-                message: "Failed to clock out"
-              });
-            }
-            
-            console.log(`✅ Clock out successful for user ${userId}`);
-            
-            res.json({ 
-              success: true,
-              message: "Clock Out Successful", 
-              location: location,
-              time: time,
-              action: "clock_out"
-            });
-          }
-        );
-      } else {
-        // No incomplete record found - This is CLOCK IN
-        console.log("✅ No incomplete records found - Creating clock in");
-        
-        db.query(
-          `INSERT INTO attendance 
-          (employee_id, date, clock_in, latitude, longitude, location_name, status, is_absent) 
-          VALUES (?, ?, ?, ?, ?, ?, 'present', 0)`,
-          [userId, today, time, latitude, longitude, location],
-          (err, result) => {
-            if (err) {
-              console.error("Clock in error:", err);
-              return res.status(500).json({ 
-                success: false,
-                message: "Failed to clock in"
-              });
-            }
-            
-            console.log(`✅ Clock in successful for user ${userId}`);
-            
-            res.json({ 
-              success: true,
-              message: "Clock In Successful", 
-              location: location,
-              time: time,
-              action: "clock_in"
-            });
-          }
-        );
-      }
+    // Check if there's already a completed record (both clock_in and clock_out)
+    const completedRecord = records.rows.find(r => r.clock_in && r.clock_out);
+    
+    if (completedRecord) {
+      console.log(`⚠️ Employee ${userId} has already completed attendance for today`);
+      return res.status(400).json({ 
+        success: false,
+        message: "You have already completed your attendance for today"
+      });
     }
-  );
+
+    // Check if there's an incomplete record (clock_in but no clock_out)
+    const incompleteRecord = records.rows.find(r => r.clock_in && !r.clock_out);
+
+    if (incompleteRecord) {
+      // This is CLOCK OUT
+      console.log(`✅ Found incomplete record ID ${incompleteRecord.id} - Processing clock out`);
+      
+      await pool.query(
+        `UPDATE attendance 
+         SET clock_out = $1, 
+             location_name = CONCAT(location_name, ' → ', $2), 
+             status = 'present'
+         WHERE id = $3`,
+        [time, location, incompleteRecord.id]
+      );
+      
+      console.log(`✅ Clock out successful for user ${userId}`);
+      
+      res.json({ 
+        success: true,
+        message: "Clock Out Successful", 
+        location: location,
+        time: time,
+        action: "clock_out"
+      });
+    } else {
+      // No incomplete record found - This is CLOCK IN
+      console.log("✅ No incomplete records found - Creating clock in");
+      
+      await pool.query(
+        `INSERT INTO attendance 
+         (employee_id, date, clock_in, latitude, longitude, location_name, status, is_absent) 
+         VALUES ($1, $2, $3, $4, $5, $6, 'present', false)`,
+        [userId, today, time, latitude, longitude, location]
+      );
+      
+      console.log(`✅ Clock in successful for user ${userId}`);
+      
+      res.json({ 
+        success: true,
+        message: "Clock In Successful", 
+        location: location,
+        time: time,
+        action: "clock_in"
+      });
+    }
+  } catch (err) {
+    console.error("Attendance error:", err);
+    res.status(500).json({ success: false, message: "Database error" });
+  }
 });
 
 /* ---------------- ADMIN LOGIN ---------------- */
@@ -394,81 +431,72 @@ app.post("/auth/admin-login", (req, res) => {
       JWT_SECRET,
       { expiresIn: "1d" }
     );
-    return res.json({ token });
+    return res.json({ success: true, token });
   }
   res.status(401).json({ message: "Wrong password" });
 });
 
 /* ---------------- ADMIN EMPLOYEES ---------------- */
 
-app.get("/admin/employees", verifyAdmin, (req, res) => {
-  db.query(
-    "SELECT id, username, email, DATE_FORMAT(created_at, '%Y-%m-%d') as created_at FROM users ORDER BY username",
-    (err, result) => {
-      if (err) {
-        return res.status(500).json({ message: "Error fetching employees" });
-      }
-      res.json(result);
-    }
-  );
+app.get("/admin/employees", verifyAdmin, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Error fetching employees:', err);
+    res.status(500).json({ message: "Error fetching employees" });
+  }
 });
 
-/* ---------------- TODAY'S ATTENDANCE - UPDATED ---------------- */
+/* ---------------- TODAY'S ATTENDANCE ---------------- */
 
-app.get("/admin/attendance/today", verifyAdmin, (req, res) => {
+app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   
-  // First get all employees
-  db.query(
-    "SELECT id, username, email, DATE_FORMAT(created_at, '%Y-%m-%d') as created_at FROM users ORDER BY username",
-    (err, employees) => {
-      if (err) {
-        console.error("Error fetching employees:", err);
-        return res.status(500).json({ message: "Error fetching employees" });
-      }
+  try {
+    // First get all employees
+    const employees = await pool.query(
+      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
+    );
 
-      // Then get today's attendance
-      db.query(
-        `SELECT 
+    // Then get today's attendance
+    const attendance = await pool.query(
+      `SELECT 
           a.id,
           a.employee_id,
           u.username,
-          DATE_FORMAT(a.date, '%Y-%m-%d') as date,
-          TIME_FORMAT(a.clock_in, '%H:%i:%s') as clock_in,
-          TIME_FORMAT(a.clock_out, '%H:%i:%s') as clock_out,
+          TO_CHAR(a.date, 'YYYY-MM-DD') as date,
+          TO_CHAR(a.clock_in, 'HH24:MI:SS') as clock_in,
+          TO_CHAR(a.clock_out, 'HH24:MI:SS') as clock_out,
           a.location_name,
           a.status
         FROM attendance a
         JOIN users u ON a.employee_id = u.id
-        WHERE a.date = ?
+        WHERE a.date = $1
         ORDER BY a.created_at DESC`,
-        [today],
-        (err, results) => {
-          if (err) {
-            console.error("Error fetching today's attendance:", err);
-            return res.status(500).json({ message: "Error fetching attendance" });
-          }
-          
-          res.json({
-            success: true,
-            date: today,
-            total_records: results.length,
-            all_records: results,
-            employees: employees
-          });
-        }
-      );
-    }
-  );
+      [today]
+    );
+    
+    res.json({
+      success: true,
+      date: today,
+      total_records: attendance.rows.length,
+      all_records: attendance.rows,
+      employees: employees.rows
+    });
+  } catch (err) {
+    console.error('Error fetching today\'s attendance:', err);
+    res.status(500).json({ message: "Error fetching attendance" });
+  }
 });
 
-/* ---------------- MARK ABSENT EMPLOYEES FUNCTION - UPDATED ---------------- */
+/* ---------------- MARK ABSENT EMPLOYEES FUNCTION ---------------- */
 
-const markAbsentEmployees = (date) => {
+const markAbsentEmployees = async (date) => {
   const today = new Date().toISOString().split('T')[0];
   
-  // 🚫 DON'T mark absent for today if we just deleted everything
-  // This ensures after delete, today stays empty
   if (date === today) {
     console.log(`⚠️ Skipping absent marking for ${date} - system was reset today`);
     return;
@@ -476,72 +504,53 @@ const markAbsentEmployees = (date) => {
 
   console.log(`📝 Marking absent employees for ${date}`);
 
-  // First, get all employees
-  db.query(
-    "SELECT id FROM users",
-    (err, employees) => {
-      if (err) {
-        console.error("Error fetching employees:", err);
-        return;
-      }
+  try {
+    // First, get all employees
+    const employees = await pool.query("SELECT id FROM users");
+    
+    if (employees.rows.length === 0) {
+      console.log("No employees found");
+      return;
+    }
 
-      if (employees.length === 0) {
-        console.log("No employees found");
-        return;
-      }
+    // Then, get all employees who have attendance for this date
+    const presentEmployees = await pool.query(
+      "SELECT DISTINCT employee_id FROM attendance WHERE date = $1",
+      [date]
+    );
 
-      // Then, get all employees who have attendance for this date
-      db.query(
-        "SELECT DISTINCT employee_id FROM attendance WHERE date = ?",
-        [date],
-        (err, presentEmployees) => {
-          if (err) {
-            console.error("Error fetching present employees:", err);
-            return;
-          }
+    // Create a Set of present employee IDs
+    const presentSet = new Set(presentEmployees.rows.map(e => e.employee_id));
 
-          // Create a Set of present employee IDs
-          const presentSet = new Set(presentEmployees.map(e => e.employee_id));
+    // Find absent employees (all employees - present employees)
+    const absentEmployees = employees.rows.filter(emp => !presentSet.has(emp.id));
 
-          // Find absent employees (all employees - present employees)
-          const absentEmployees = employees.filter(emp => !presentSet.has(emp.id));
+    if (absentEmployees.length === 0) {
+      console.log(`✅ No absent employees for ${date}`);
+      return;
+    }
 
-          if (absentEmployees.length === 0) {
-            console.log(`✅ No absent employees for ${date}`);
-            return;
-          }
+    console.log(`📊 Found ${absentEmployees.length} absent employees for ${date}`);
 
-          console.log(`📊 Found ${absentEmployees.length} absent employees for ${date}`);
-
-          // Insert absent records for each absent employee
-          let insertedCount = 0;
-          absentEmployees.forEach(emp => {
-            db.query(
-              `INSERT INTO attendance 
-              (employee_id, date, status, is_absent, created_at) 
-              VALUES (?, ?, 'absent', 1, NOW())`,
-              [emp.id, date],
-              (err, result) => {
-                if (err) {
-                  console.error(`Error marking absent for employee ${emp.id}:`, err);
-                } else {
-                  insertedCount++;
-                  if (insertedCount === absentEmployees.length) {
-                    console.log(`✅ Marked ${insertedCount} employees absent for ${date}`);
-                  }
-                }
-              }
-            );
-          });
-        }
+    // Insert absent records for each absent employee
+    for (const emp of absentEmployees) {
+      await pool.query(
+        `INSERT INTO attendance 
+         (employee_id, date, status, is_absent, created_at) 
+         VALUES ($1, $2, 'absent', true, NOW())`,
+        [emp.id, date]
       );
     }
-  );
+    
+    console.log(`✅ Marked ${absentEmployees.length} employees absent for ${date}`);
+  } catch (err) {
+    console.error("Error marking absent employees:", err);
+  }
 };
 
 /* ---------------- END OF DAY REPORT ---------------- */
 
-app.post("/admin/end-of-day", verifyAdmin, (req, res) => {
+app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
   const { date } = req.body;
   
   // Use today's date if no date provided
@@ -551,77 +560,70 @@ app.post("/admin/end-of-day", verifyAdmin, (req, res) => {
   console.log(`📋 Generating End of Day Report for ${targetDate}`);
   console.log("=".repeat(50));
 
-  // First, mark absent employees
-  markAbsentEmployees(targetDate);
+  try {
+    // First, mark absent employees
+    await markAbsentEmployees(targetDate);
 
-  // Then generate the full report
-  db.query(
-    `SELECT 
-      u.id as employee_id,
-      u.username,
-      u.email,
-      a.clock_in,
-      a.clock_out,
-      a.location_name,
-      a.status,
-      a.is_absent,
-      a.created_at
-    FROM users u
-    LEFT JOIN attendance a ON u.id = a.employee_id AND a.date = ?
-    ORDER BY u.username`,
-    [targetDate],
-    (err, results) => {
-      if (err) {
-        console.error("Error generating end of day report:", err);
-        return res.status(500).json({ 
-          success: false, 
-          message: "Error generating report" 
-        });
-      }
+    // Then generate the full report
+    const results = await pool.query(
+      `SELECT 
+        u.id as employee_id,
+        u.username,
+        u.email,
+        TO_CHAR(a.clock_in, 'HH24:MI:SS') as clock_in,
+        TO_CHAR(a.clock_out, 'HH24:MI:SS') as clock_out,
+        a.location_name,
+        a.status,
+        a.is_absent,
+        a.created_at
+      FROM users u
+      LEFT JOIN attendance a ON u.id = a.employee_id AND a.date = $1
+      ORDER BY u.username`,
+      [targetDate]
+    );
 
-      // Helper function to format time
-      const formatTime = (time) => {
-        if (!time) return null;
-        return time;
-      };
+    // Format the results
+    const report = results.rows.map(row => ({
+      employee_id: row.employee_id,
+      username: row.username,
+      email: row.email,
+      date: targetDate,
+      clock_in: row.clock_in || null,
+      clock_out: row.clock_out || null,
+      location: row.location_name || "—",
+      status: row.is_absent ? "absent" : (row.clock_in ? (row.clock_out ? "present" : "partial") : "absent"),
+      is_absent: row.is_absent || false
+    }));
 
-      // Format the results
-      const report = results.map(row => ({
-        employee_id: row.employee_id,
-        username: row.username,
-        email: row.email,
-        date: targetDate,
-        clock_in: row.clock_in ? formatTime(row.clock_in) : null,
-        clock_out: row.clock_out ? formatTime(row.clock_out) : null,
-        location: row.location_name || "—",
-        status: row.is_absent ? "absent" : (row.clock_in ? (row.clock_out ? "present" : "partial") : "absent"),
-        is_absent: row.is_absent || false
-      }));
+    // Calculate stats
+    const present = report.filter(r => r.status === "present").length;
+    const partial = report.filter(r => r.status === "partial").length;
+    const absent = report.filter(r => r.status === "absent").length;
 
-      // Calculate stats
-      const present = report.filter(r => r.status === "present").length;
-      const partial = report.filter(r => r.status === "partial").length;
-      const absent = report.filter(r => r.status === "absent").length;
-
-      res.json({
-        success: true,
-        date: targetDate,
-        report: report,
-        stats: {
-          total: report.length,
-          present,
-          partial,
-          absent
-        },
-        message: `End of day report generated for ${targetDate}`
-      });
-    }
-  );
+    res.json({
+      success: true,
+      date: targetDate,
+      report: report,
+      stats: {
+        total: report.length,
+        present,
+        partial,
+        absent
+      },
+      message: `End of day report generated for ${targetDate}`
+    });
+  } catch (err) {
+    console.error("Error generating end of day report:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Error generating report" 
+    });
+  }
 });
 
-/* ---------------- MONTHLY ATTENDANCE WITH ABSENT RECORDS ---------------- */
+/* ---------------- MONTHLY ATTENDANCE ---------------- */
 
-app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, (req, res) => {
+app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) => {
   const { year, month } = req.params;
   
   const yearNum = parseInt(year);
@@ -634,142 +636,118 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, (req, res) => {
     });
   }
 
-  console.log(`📅 Fetching monthly attendance for ${year}-${month} (including absent records)`);
+  console.log(`📅 Fetching monthly attendance for ${year}-${month}`);
 
-  // First get all employees with their registration dates
-  db.query(
-    "SELECT id, username, email, DATE_FORMAT(created_at, '%Y-%m-%d') as created_at FROM users ORDER BY username",
-    (err, employees) => {
-      if (err) {
-        console.error("Error fetching employees:", err);
-        return res.status(500).json({ 
-          success: false, 
-          message: "Error fetching employees" 
-        });
-      }
+  try {
+    // First get all employees with their registration dates
+    const employees = await pool.query(
+      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
+    );
 
-      // Then get all attendance records for the month (including absent)
-      db.query(
-        `SELECT 
+    // Then get all attendance records for the month
+    const attendanceRecords = await pool.query(
+      `SELECT 
           a.id,
           a.employee_id,
           u.username,
           u.email as employee_email,
-          DATE_FORMAT(a.date, '%Y-%m-%d') as date,
-          TIME_FORMAT(a.clock_in, '%H:%i:%s') as clock_in,
-          TIME_FORMAT(a.clock_out, '%H:%i:%s') as clock_out,
+          TO_CHAR(a.date, 'YYYY-MM-DD') as date,
+          TO_CHAR(a.clock_in, 'HH24:MI:SS') as clock_in,
+          TO_CHAR(a.clock_out, 'HH24:MI:SS') as clock_out,
           a.location_name,
           a.status,
           a.is_absent,
           a.created_at as record_created_at
         FROM attendance a
         JOIN users u ON a.employee_id = u.id
-        WHERE YEAR(a.date) = ? AND MONTH(a.date) = ?
+        WHERE EXTRACT(YEAR FROM a.date) = $1 AND EXTRACT(MONTH FROM a.date) = $2
         ORDER BY a.date DESC, a.created_at DESC`,
-        [yearNum, monthNum],
-        (err, attendanceRecords) => {
-          if (err) {
-            console.error("Error fetching monthly attendance:", err);
-            return res.status(500).json({ 
-              success: false, 
-              message: "Error fetching attendance records" 
-            });
-          }
-          
-          console.log(`✅ Found ${attendanceRecords.length} attendance records for ${year}-${month}`);
-          
-          // Return both employees and attendance records
-          res.json({
-            success: true,
-            year: yearNum,
-            month: monthNum,
-            employees: employees,
-            attendance: attendanceRecords,
-            total_records: attendanceRecords.length
-          });
-        }
-      );
-    }
-  );
+      [yearNum, monthNum]
+    );
+    
+    console.log(`✅ Found ${attendanceRecords.rows.length} attendance records for ${year}-${month}`);
+    
+    res.json({
+      success: true,
+      year: yearNum,
+      month: monthNum,
+      employees: employees.rows,
+      attendance: attendanceRecords.rows,
+      total_records: attendanceRecords.rows.length
+    });
+  } catch (err) {
+    console.error("Error fetching monthly attendance:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Error fetching attendance records" 
+    });
+  }
 });
 
-/* ---------------- EMPLOYEE FULL HISTORY - UPDATED ---------------- */
+/* ---------------- EMPLOYEE FULL HISTORY ---------------- */
 
-app.get("/admin/employee/:id/history", verifyAdmin, (req, res) => {
+app.get("/admin/employee/:id/history", verifyAdmin, async (req, res) => {
   const employeeId = req.params.id;
 
-  // First get employee details
-  db.query(
-    "SELECT id, username, email, DATE_FORMAT(created_at, '%Y-%m-%d') as created_at FROM users WHERE id = ?",
-    [employeeId],
-    (err, userResult) => {
-      if (err || userResult.length === 0) {
-        return res.status(404).json({ message: "Employee not found" });
-      }
+  try {
+    // First get employee details
+    const userResult = await pool.query(
+      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users WHERE id = $1",
+      [employeeId]
+    );
 
-      const employee = userResult[0];
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
 
-      // Then get all attendance records (including absent)
-      db.query(
-        `SELECT 
+    const employee = userResult.rows[0];
+
+    // Then get all attendance records (including absent)
+    const attendanceResult = await pool.query(
+      `SELECT 
           id,
-          DATE_FORMAT(date, '%Y-%m-%d') as date,
-          TIME_FORMAT(clock_in, '%H:%i:%s') as clock_in,
-          TIME_FORMAT(clock_out, '%H:%i:%s') as clock_out,
+          TO_CHAR(date, 'YYYY-MM-DD') as date,
+          TO_CHAR(clock_in, 'HH24:MI:SS') as clock_in,
+          TO_CHAR(clock_out, 'HH24:MI:SS') as clock_out,
           location_name,
           status,
           is_absent,
           created_at as record_created_at
          FROM attendance 
-         WHERE employee_id = ?
+         WHERE employee_id = $1
          ORDER BY date DESC, created_at DESC`,
-        [employeeId],
-        (err, attendanceResult) => {
-          if (err) {
-            console.error("Error fetching employee attendance:", err);
-            return res.status(500).json({ message: "Error fetching attendance" });
-          }
+      [employeeId]
+    );
 
-          res.json({
-            employee,
-            attendance: attendanceResult,
-            total_records: attendanceResult.length,
-            registered_date: employee.created_at
-          });
-        }
-      );
-    }
-  );
+    res.json({
+      employee,
+      attendance: attendanceResult.rows,
+      total_records: attendanceResult.rows.length,
+      registered_date: employee.created_at
+    });
+  } catch (err) {
+    console.error("Error fetching employee attendance:", err);
+    res.status(500).json({ message: "Error fetching attendance" });
+  }
 });
 
 /* ---------------- DELETE EMPLOYEE ---------------- */
 
-app.delete("/admin/employees/:id", verifyAdmin, (req, res) => {
+app.delete("/admin/employees/:id", verifyAdmin, async (req, res) => {
   const id = req.params.id;
 
-  db.query(
-    "DELETE FROM attendance WHERE employee_id=?",
-    [id],
-    (err) => {
-      if (err) {
-        return res.status(500).json({ message: "Error deleting employee records" });
-      }
-
-      db.query(
-        "DELETE FROM users WHERE id=?",
-        [id],
-        (err) => {
-          if (err) {
-            return res.status(500).json({ message: "Error deleting employee" });
-          }
-          res.json({ 
-            success: true,
-            message: "Employee deleted successfully" 
-          });
-        }
-      );
-    }
-  );
+  try {
+    // Delete employee (attendance will cascade due to ON DELETE CASCADE)
+    await pool.query("DELETE FROM users WHERE id = $1", [id]);
+    
+    res.json({ 
+      success: true,
+      message: "Employee deleted successfully" 
+    });
+  } catch (err) {
+    console.error("Error deleting employee:", err);
+    res.status(500).json({ message: "Error deleting employee" });
+  }
 });
 
 /* ---------------- TEST ENDPOINT ---------------- */
@@ -795,78 +773,62 @@ app.get("/admin/test", verifyAdmin, (req, res) => {
 
 /* ---------------- GET DATE RANGE OF ATTENDANCE RECORDS ---------------- */
 
-app.get("/admin/attendance/date-range", verifyAdmin, (req, res) => {
+app.get("/admin/attendance/date-range", verifyAdmin, async (req, res) => {
   console.log("📅 Fetching min and max dates from attendance records");
 
-  db.query(
-    "SELECT MIN(date) as minDate, MAX(date) as maxDate FROM attendance",
-    (err, result) => {
-      if (err) {
-        console.error("Error fetching date range:", err);
-        return res.status(500).json({ 
-          success: false, 
-          message: "Error fetching date range" 
-        });
-      }
+  try {
+    const result = await pool.query(
+      "SELECT MIN(date) as minDate, MAX(date) as maxDate FROM attendance"
+    );
 
-      res.json({
-        success: true,
-        minDate: result[0].minDate,
-        maxDate: result[0].maxDate
-      });
-    }
-  );
+    res.json({
+      success: true,
+      minDate: result.rows[0].mindate,
+      maxDate: result.rows[0].maxdate
+    });
+  } catch (err) {
+    console.error("Error fetching date range:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Error fetching date range" 
+    });
+  }
 });
 
 /* ---------------- DELETE ALL ATTENDANCE RECORDS ---------------- */
 
-app.delete("/admin/attendance/all", verifyAdmin, (req, res) => {
+app.delete("/admin/attendance/all", verifyAdmin, async (req, res) => {
   console.log("=".repeat(50));
   console.log("🗑️ DELETING ALL ATTENDANCE RECORDS");
   console.log("=".repeat(50));
 
-  // First, get count of records to be deleted
-  db.query(
-    "SELECT COUNT(*) as total FROM attendance",
-    (err, countResult) => {
-      if (err) {
-        console.error("Error counting attendance records:", err);
-        return res.status(500).json({ 
-          success: false, 
-          message: "Error counting attendance records" 
-        });
-      }
+  try {
+    // First, get count of records to be deleted
+    const countResult = await pool.query("SELECT COUNT(*) as total FROM attendance");
+    const totalRecords = parseInt(countResult.rows[0].total);
 
-      const totalRecords = countResult[0].total;
+    // Delete all attendance records
+    await pool.query("DELETE FROM attendance");
 
-      // Delete all attendance records
-      db.query(
-        "DELETE FROM attendance",
-        (err, result) => {
-          if (err) {
-            console.error("Error deleting all attendance records:", err);
-            return res.status(500).json({ 
-              success: false, 
-              message: "Error deleting attendance records" 
-            });
-          }
-
-          console.log(`✅ Deleted ${totalRecords} attendance records`);
-          
-          res.json({ 
-            success: true,
-            message: `Successfully deleted ${totalRecords} attendance records`,
-            deletedCount: totalRecords
-          });
-        }
-      );
-    }
-  );
+    console.log(`✅ Deleted ${totalRecords} attendance records`);
+    
+    res.json({ 
+      success: true,
+      message: `Successfully deleted ${totalRecords} attendance records`,
+      deletedCount: totalRecords
+    });
+  } catch (err) {
+    console.error("Error deleting all attendance records:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Error deleting attendance records" 
+    });
+  }
 });
 
 /* ---------------- DELETE ATTENDANCE RECORDS BY DATE RANGE ---------------- */
 
-app.delete("/admin/attendance/range", verifyAdmin, (req, res) => {
+app.delete("/admin/attendance/range", verifyAdmin, async (req, res) => {
   const { startDate, endDate } = req.body;
 
   if (!startDate || !endDate) {
@@ -897,189 +859,159 @@ app.delete("/admin/attendance/range", verifyAdmin, (req, res) => {
   console.log(`🗑️ DELETING ATTENDANCE RECORDS FROM ${startDate} TO ${endDate}`);
   console.log("=".repeat(50));
 
-  // First, get count of records to be deleted in the date range
-  db.query(
-    "SELECT COUNT(*) as total FROM attendance WHERE date BETWEEN ? AND ?",
-    [startDate, endDate],
-    (err, countResult) => {
-      if (err) {
-        console.error("Error counting attendance records:", err);
-        return res.status(500).json({ 
-          success: false, 
-          message: "Error counting attendance records" 
-        });
-      }
+  try {
+    // First, get count of records to be deleted in the date range
+    const countResult = await pool.query(
+      "SELECT COUNT(*) as total FROM attendance WHERE date BETWEEN $1 AND $2",
+      [startDate, endDate]
+    );
+    
+    const totalRecords = parseInt(countResult.rows[0].total);
 
-      const totalRecords = countResult[0].total;
-
-      if (totalRecords === 0) {
-        return res.json({ 
-          success: true,
-          message: `No attendance records found between ${startDate} and ${endDate}`,
-          deletedCount: 0
-        });
-      }
-
-      // Delete attendance records in the date range
-      db.query(
-        "DELETE FROM attendance WHERE date BETWEEN ? AND ?",
-        [startDate, endDate],
-        (err, result) => {
-          if (err) {
-            console.error("Error deleting attendance records:", err);
-            return res.status(500).json({ 
-              success: false, 
-              message: "Error deleting attendance records" 
-            });
-          }
-
-          console.log(`✅ Deleted ${totalRecords} attendance records from ${startDate} to ${endDate}`);
-          
-          res.json({ 
-            success: true,
-            message: `Successfully deleted ${totalRecords} attendance records from ${startDate} to ${endDate}`,
-            deletedCount: totalRecords,
-            startDate: startDate,
-            endDate: endDate
-          });
-        }
-      );
+    if (totalRecords === 0) {
+      return res.json({ 
+        success: true,
+        message: `No attendance records found between ${startDate} and ${endDate}`,
+        deletedCount: 0
+      });
     }
-  );
+
+    // Delete attendance records in the date range
+    await pool.query(
+      "DELETE FROM attendance WHERE date BETWEEN $1 AND $2",
+      [startDate, endDate]
+    );
+
+    console.log(`✅ Deleted ${totalRecords} attendance records from ${startDate} to ${endDate}`);
+    
+    res.json({ 
+      success: true,
+      message: `Successfully deleted ${totalRecords} attendance records from ${startDate} to ${endDate}`,
+      deletedCount: totalRecords,
+      startDate: startDate,
+      endDate: endDate
+    });
+  } catch (err) {
+    console.error("Error deleting attendance records:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Error deleting attendance records" 
+    });
+  }
 });
 
 /* ---------------- GET AVAILABLE YEARS ---------------- */
 
-app.get("/admin/attendance/years", verifyAdmin, (req, res) => {
+app.get("/admin/attendance/years", verifyAdmin, async (req, res) => {
   console.log("📅 Fetching available years from attendance records");
 
-  db.query(
-    "SELECT DISTINCT YEAR(date) as year FROM attendance ORDER BY year DESC",
-    (err, results) => {
-      if (err) {
-        console.error("Error fetching years:", err);
-        return res.status(500).json({ 
-          success: false, 
-          message: "Error fetching years" 
-        });
-      }
+  try {
+    const result = await pool.query(
+      "SELECT DISTINCT EXTRACT(YEAR FROM date) as year FROM attendance ORDER BY year DESC"
+    );
 
-      const years = results.map(r => r.year);
-      console.log("✅ Available years:", years);
+    const years = result.rows.map(r => parseInt(r.year));
+    console.log("✅ Available years:", years);
 
-      res.json({
-        success: true,
-        years: years
-      });
-    }
-  );
+    res.json({
+      success: true,
+      years: years
+    });
+  } catch (err) {
+    console.error("Error fetching years:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Error fetching years" 
+    });
+  }
 });
 
-/* ---------------- GET STATISTICS - UPDATED ---------------- */
+/* ---------------- GET STATISTICS ---------------- */
 
-app.get("/admin/stats", verifyAdmin, (req, res) => {
+app.get("/admin/stats", verifyAdmin, async (req, res) => {
   console.log("📊 Fetching dashboard statistics");
 
   const today = new Date().toISOString().split('T')[0];
+  const year = new Date().getFullYear();
+  const month = new Date().getMonth() + 1;
 
-  // Get total employees
-  db.query(
-    "SELECT COUNT(*) as total FROM users",
-    (err, employeeResult) => {
-      if (err) {
-        console.error("Error fetching employee count:", err);
-        return res.status(500).json({ message: "Error fetching statistics" });
-      }
+  try {
+    // Get total employees
+    const employeeResult = await pool.query("SELECT COUNT(*) as total FROM users");
+    const totalEmployees = parseInt(employeeResult.rows[0].total);
 
-      const totalEmployees = employeeResult[0].total;
-
-      // Get today's attendance
-      db.query(
-        `SELECT 
+    // Get today's attendance
+    const todayResult = await pool.query(
+      `SELECT 
           COUNT(*) as total_today,
           SUM(CASE WHEN clock_in IS NOT NULL AND clock_out IS NOT NULL THEN 1 ELSE 0 END) as present_today,
           SUM(CASE WHEN (clock_in IS NOT NULL AND clock_out IS NULL) OR (clock_in IS NULL AND clock_out IS NOT NULL) THEN 1 ELSE 0 END) as partial_today,
           COUNT(DISTINCT employee_id) as employees_with_records_today
         FROM attendance 
-        WHERE date = ?`,
-        [today],
-        (err, todayResult) => {
-          if (err) {
-            console.error("Error fetching today's attendance:", err);
-            return res.status(500).json({ message: "Error fetching statistics" });
-          }
+        WHERE date = $1`,
+      [today]
+    );
 
-          const presentToday = todayResult[0].present_today || 0;
-          const partialToday = todayResult[0].partial_today || 0;
-          const employeesWithRecords = todayResult[0].employees_with_records_today || 0;
-          const absentToday = totalEmployees - employeesWithRecords;
+    const presentToday = parseInt(todayResult.rows[0].present_today) || 0;
+    const partialToday = parseInt(todayResult.rows[0].partial_today) || 0;
+    const employeesWithRecords = parseInt(todayResult.rows[0].employees_with_records_today) || 0;
+    const absentToday = totalEmployees - employeesWithRecords;
 
-          // Get monthly totals
-          const year = new Date().getFullYear();
-          const month = new Date().getMonth() + 1;
+    // Get monthly totals
+    const monthResult = await pool.query(
+      `SELECT 
+          COUNT(*) as total_month,
+          SUM(CASE WHEN clock_in IS NOT NULL AND clock_out IS NOT NULL THEN 1 ELSE 0 END) as present_month,
+          SUM(CASE WHEN (clock_in IS NOT NULL AND clock_out IS NULL) OR (clock_in IS NULL AND clock_out IS NOT NULL) THEN 1 ELSE 0 END) as partial_month
+        FROM attendance 
+        WHERE EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
+      [year, month]
+    );
 
-          db.query(
-            `SELECT 
-              COUNT(*) as total_month,
-              SUM(CASE WHEN clock_in IS NOT NULL AND clock_out IS NOT NULL THEN 1 ELSE 0 END) as present_month,
-              SUM(CASE WHEN (clock_in IS NOT NULL AND clock_out IS NULL) OR (clock_in IS NULL AND clock_out IS NOT NULL) THEN 1 ELSE 0 END) as partial_month
-            FROM attendance 
-            WHERE YEAR(date) = ? AND MONTH(date) = ?`,
-            [year, month],
-            (err, monthResult) => {
-              if (err) {
-                console.error("Error fetching monthly attendance:", err);
-                return res.status(500).json({ message: "Error fetching statistics" });
-              }
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const totalPossibleRecords = totalEmployees * daysInMonth;
+    const presentMonth = parseInt(monthResult.rows[0].present_month) || 0;
+    const partialMonth = parseInt(monthResult.rows[0].partial_month) || 0;
+    const totalRecords = parseInt(monthResult.rows[0].total_month) || 0;
+    const absentMonth = totalPossibleRecords - totalRecords;
 
-              const daysInMonth = new Date(year, month, 0).getDate();
-              const totalPossibleRecords = totalEmployees * daysInMonth;
-              const presentMonth = monthResult[0].present_month || 0;
-              const partialMonth = monthResult[0].partial_month || 0;
-              const totalRecords = monthResult[0].total_month || 0;
-              const absentMonth = totalPossibleRecords - totalRecords;
-
-              res.json({
-                success: true,
-                stats: {
-                  totalEmployees,
-                  today: {
-                    present: presentToday,
-                    partial: partialToday,
-                    absent: absentToday,
-                    total: presentToday + partialToday,
-                    employees_with_records: employeesWithRecords
-                  },
-                  month: {
-                    present: presentMonth,
-                    partial: partialMonth,
-                    absent: absentMonth,
-                    total: totalRecords,
-                    possible: totalPossibleRecords
-                  }
-                }
-              });
-            }
-          );
+    res.json({
+      success: true,
+      stats: {
+        totalEmployees,
+        today: {
+          present: presentToday,
+          partial: partialToday,
+          absent: absentToday,
+          total: presentToday + partialToday,
+          employees_with_records: employeesWithRecords
+        },
+        month: {
+          present: presentMonth,
+          partial: partialMonth,
+          absent: absentMonth,
+          total: totalRecords,
+          possible: totalPossibleRecords
         }
-      );
-    }
-  );
+      }
+    });
+  } catch (err) {
+    console.error("Error fetching statistics:", err);
+    res.status(500).json({ message: "Error fetching statistics" });
+  }
 });
 
-/* ---------------- AUTOMATIC END OF DAY SCHEDULER - UPDATED ---------------- */
+/* ---------------- AUTOMATIC END OF DAY SCHEDULER ---------------- */
 
 // Schedule end of day report at 11:59 PM every day
 cron.schedule('59 23 * * *', () => {
-  const today = new Date().toISOString().split('T')[0];
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
   
   console.log('🕛 Running automatic end of day attendance marking for', yesterday);
-  // Pass YESTERDAY's date so today stays empty after delete
   markAbsentEmployees(yesterday);
 }, {
   scheduled: true,
-  timezone: "Asia/Kolkata" // Change this to your timezone
+  timezone: "Asia/Kolkata"
 });
 
 console.log("⏰ Scheduled end of day job set for 11:59 PM daily (marking previous day's absent)");
@@ -1087,7 +1019,6 @@ console.log("⏰ Scheduled end of day job set for 11:59 PM daily (marking previo
 app.get("/", (req, res) => {
   res.send("Attendance System Backend is Running ✅");
 });
-
 
 // Serve React static files
 const buildPath = path.join(__dirname, "build");
@@ -1098,7 +1029,6 @@ app.use((req, res, next) => {
   // Check if the request is for an API route
   if (req.path.startsWith('/admin') || 
       req.path.startsWith('/auth') || 
-      req.path.startsWith('/api') || // Add this to catch /api/login
       req.path.startsWith('/attendance')) {
     return next(); // Continue to API routes
   }
@@ -1139,4 +1069,4 @@ app.listen(PORT, () => {
   console.log("   DELETE /admin/attendance/range");
   console.log("   POST /admin/end-of-day");
   console.log("=".repeat(50));
-});// Fresh deploy Tue, Mar 17, 2026  3:51:43 PM
+});
