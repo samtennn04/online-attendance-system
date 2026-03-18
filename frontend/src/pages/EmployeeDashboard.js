@@ -270,7 +270,7 @@ const styles = {
     left: 0,
     right: 0,
     height: "400px",
-    background: `linear-gradient(135deg, ${colors.primary}20 0%, ${colors.secondary}20 100%)`,
+    background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
     backdropFilter: "blur(100px)",
     borderBottomLeftRadius: "50px",
     borderBottomRightRadius: "50px",
