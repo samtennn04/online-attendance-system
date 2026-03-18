@@ -517,10 +517,12 @@ const styles = {
     outline: "none",
   },
 
-  logoutText: {
-    flex: 1,
-    textAlign: "center",
-  },
+logoutText: {
+  flex: 1,
+  textAlign: "center",
+  marginLeft: "20px", // Add this to push text right
+  marginRight: "auto", // Add this for better centering
+},
 
   footerNote: {
     textAlign: "center",
