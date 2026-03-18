@@ -8,23 +8,21 @@ import {
   FaArrowRight,
   FaClock,
   FaCalendarAlt,
-  FaIdCard,
-  FaShieldAlt
+  FaIdCard
 } from "react-icons/fa";
-import { MdAccessTime, MdWork, MdLocationOn } from "react-icons/md";
+import { MdAccessTime, MdWork } from "react-icons/md";
 
 // Import your logo
 import logo from "../assets/logo.png";
 
-// Professional color palette
+// Premium color palette with #006389 as primary
 const colors = {
   primary: "#006389",
-  secondary: "#004b6e",
-  accent: "#00a3b5",
+  secondary: "#005476",
+  accent: "#0077a3",
   success: "#10b981",
   warning: "#f59e0b",
   danger: "#ef4444",
-  info: "#3b82f6",
   light: "#f8fafc",
   offWhite: "#f1f5f9",
   white: "#ffffff",
@@ -32,8 +30,7 @@ const colors = {
   gray: "#64748b",
   lightGray: "#94a3b8",
   border: "#e2e8f0",
-  gradient: "linear-gradient(135deg, #006389 0%, #004b6e 100%)",
-  gradientAccent: "linear-gradient(135deg, #00a3b5 0%, #006389 100%)",
+  gradient: "linear-gradient(135deg, #006389 0%, #005476 100%)",
   glass: "rgba(255, 255, 255, 0.95)",
   glassLight: "rgba(255, 255, 255, 0.7)"
 };
@@ -44,7 +41,6 @@ function EmployeeDashboard() {
   const [greeting, setGreeting] = useState("");
   const [loading, setLoading] = useState(true);
   const [showContent, setShowContent] = useState(false);
-  const [attendanceStatus, setAttendanceStatus] = useState("Not Marked");
 
   const user = JSON.parse(localStorage.getItem("user")) || {};
   const token = localStorage.getItem("token");
@@ -128,19 +124,9 @@ function EmployeeDashboard() {
       
       {/* Content Container with Fade In */}
       <div style={{...styles.contentContainer, opacity: showContent ? 1 : 0}}>
-        {/* Header */}
-        <div style={styles.header}>
-          <div style={styles.logoWrapper}>
-            <img src={logo} alt="KUENSEL" style={styles.logo} />
-            <div style={styles.brandText}>
-              <span style={styles.brandName}>KUENSEL</span>
-              <span style={styles.brandTagline}>ScanTrack</span>
-            </div>
-          </div>
-          <div style={styles.securityBadge}>
-            <FaShieldAlt size={14} color={colors.accent} />
-            <span style={styles.securityText}>Secure Access</span>
-          </div>
+        {/* Centered Logo */}
+        <div style={styles.logoWrapper}>
+          <img src={logo} alt="KUENSEL" style={styles.logo} />
         </div>
 
         {/* Welcome Section */}
@@ -149,7 +135,7 @@ function EmployeeDashboard() {
             <h1 style={styles.welcomeGreeting}>{greeting},</h1>
             <h2 style={styles.welcomeName}>{employeeName}</h2>
             <div style={styles.roleBadge}>
-              <MdWork size={14} color={colors.accent} />
+              <MdWork size={14} color={colors.primary} />
               <span style={styles.roleText}>{employeeRole}</span>
             </div>
           </div>
@@ -284,7 +270,7 @@ const styles = {
     left: 0,
     right: 0,
     height: "400px",
-    background: "linear-gradient(135deg, #00638920 0%, #004b6e20 100%)",
+    background: `linear-gradient(135deg, ${colors.primary}20 0%, ${colors.secondary}20 100%)`,
     backdropFilter: "blur(100px)",
     borderBottomLeftRadius: "50px",
     borderBottomRightRadius: "50px",
@@ -321,7 +307,7 @@ const styles = {
   },
 
   loadingLogo: {
-    height: "60px",
+    height: "80px",
     width: "auto",
     marginBottom: "20px",
   },
@@ -342,58 +328,16 @@ const styles = {
     opacity: 0.9,
   },
 
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "30px",
-    paddingTop: "10px",
-  },
-
   logoWrapper: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
+    textAlign: "center",
+    marginTop: "20px",
+    marginBottom: "30px",
   },
 
   logo: {
-    height: "40px",
+    height: "70px",
     width: "auto",
-  },
-
-  brandText: {
-    display: "flex",
-    flexDirection: "column",
-  },
-
-  brandName: {
-    fontSize: "18px",
-    fontWeight: "700",
-    color: colors.dark,
-    lineHeight: 1.2,
-  },
-
-  brandTagline: {
-    fontSize: "11px",
-    fontWeight: "500",
-    color: colors.gray,
-    letterSpacing: "0.5px",
-  },
-
-  securityBadge: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "6px 12px",
-    backgroundColor: colors.white,
-    borderRadius: "30px",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-  },
-
-  securityText: {
-    fontSize: "12px",
-    fontWeight: "500",
-    color: colors.dark,
+    objectFit: "contain",
   },
 
   welcomeSection: {
@@ -583,7 +527,7 @@ const styles = {
     cursor: "pointer",
     transition: "all 0.3s ease",
     textAlign: "left",
-    boxShadow: "0 8px 20px rgba(0,99,137,0.3)",
+    boxShadow: `0 8px 20px ${colors.primary}50`,
   },
 
   secondaryButton: {
@@ -592,7 +536,7 @@ const styles = {
     gap: "16px",
     padding: "16px",
     backgroundColor: "transparent",
-    border: "2px solid #ef444430",
+    border: `2px solid ${colors.danger}30`,
     borderRadius: "20px",
     color: colors.danger,
     cursor: "pointer",
@@ -710,15 +654,6 @@ style.textContent = `
 
   button:active {
     transform: translateY(0);
-  }
-
-  .primaryButton:hover {
-    opacity: 0.95;
-  }
-
-  .secondaryButton:hover {
-    background-color: #fee2e2;
-    border-color: #ef4444;
   }
 
   @media (max-width: 380px) {
