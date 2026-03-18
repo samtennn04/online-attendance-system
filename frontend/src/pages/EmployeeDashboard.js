@@ -35,7 +35,6 @@ function EmployeeDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [greeting, setGreeting] = useState("");
   const [loading, setLoading] = useState(true);
-  const [isMounted, setIsMounted] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user")) || {};
   const token = localStorage.getItem("token");
@@ -45,14 +44,6 @@ function EmployeeDashboard() {
   useEffect(() => {
     if (!token) navigate("/login");
   }, [token, navigate]);
-
-  // Set mounted state after component mounts
-  useEffect(() => {
-    setIsMounted(true);
-    // Simulate loading completion
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
 
   // Update time every second
   useEffect(() => {
@@ -67,6 +58,12 @@ function EmployeeDashboard() {
     else if (hour < 17) setGreeting(`Good Afternoon, ${employeeName}`);
     else setGreeting(`Good Evening, ${employeeName}`);
   }, [currentTime, employeeName]);
+
+  // Set loading to false after component mounts
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to logout?")) {
@@ -93,8 +90,7 @@ function EmployeeDashboard() {
   const dayNumber = currentTime.getDate();
   const year = currentTime.getFullYear();
 
-  // Show loading only on initial mount
-  if (loading || !isMounted) return (
+  if (loading) return (
     <div style={styles.loadingContainer}>
       <div style={styles.loadingSpinner}></div>
     </div>
@@ -102,25 +98,24 @@ function EmployeeDashboard() {
 
   return (
     <div style={styles.container}>
-      {/* Fixed Background */}
+      {/* Background */}
       <div style={styles.backgroundPattern}></div>
-      <div style={styles.backgroundOverlay}></div>
       
-      {/* Fixed Logo at Top */}
+      {/* Logo - Only at top */}
       <div style={styles.logoWrapper}>
-        <img src={logo} alt="Kuensel Logo" style={styles.logo} />
+        <img src={logo} alt="KUENSEL" style={styles.logo} />
       </div>
       
-      {/* Bank Name - Added to match your design */}
+      {/* Bank Name - Only once! */}
       <div style={styles.bankName}>THE PEOPLE'S BANK OF SANTE</div>
       
-      {/* Perfectly Centered Content */}
+      {/* Main Content */}
       <div style={styles.contentWrapper}>
         <div style={styles.contentCard}>
           {/* Avatar and Greeting */}
           <div style={styles.greetingSection}>
             <div style={styles.avatarContainer}>
-              <FaUserCircle size={72} color={colors.white} />
+              <FaUserCircle size={60} color={colors.white} />
             </div>
             <div style={styles.greetingText}>
               <p style={styles.greeting}>{greeting}</p>
@@ -128,17 +123,15 @@ function EmployeeDashboard() {
             </div>
           </div>
 
-          {/* Large Time Display Card */}
+          {/* Time Card */}
           <div style={styles.timeCard}>
             <div style={styles.timeCardHeader}>
-              <MdAccessTime size={20} color={colors.primary} />
+              <MdAccessTime size={16} color={colors.primary} />
               <span style={styles.timeCardTitle}>CURRENT TIME</span>
             </div>
             
             <div style={styles.timeDisplay}>
-              <span style={styles.timeNumber}>
-                {hours.toString().padStart(2, '0')}:{minutes}:{seconds}
-              </span>
+              <span style={styles.timeNumber}>{hours.toString().padStart(2, '0')}:{minutes}:{seconds}</span>
               <span style={styles.timeAmPm}>{ampm}</span>
             </div>
 
@@ -149,15 +142,15 @@ function EmployeeDashboard() {
           </div>
 
           {/* Scan QR Button */}
-          <button onClick={handleScanQR} style={styles.scanButton} className="scanButton">
-            <FaQrcode size={20} />
+          <button onClick={handleScanQR} style={styles.scanButton}>
+            <FaQrcode size={18} />
             <span style={styles.scanButtonText}>Scan QR Code</span>
-            <FaArrowRight size={16} />
+            <FaArrowRight size={14} />
           </button>
 
           {/* Logout Button */}
-          <button onClick={handleLogout} style={styles.logoutButton} className="logoutButton">
-            <FaSignOutAlt size={20} />
+          <button onClick={handleLogout} style={styles.logoutButton}>
+            <FaSignOutAlt size={18} />
             <span style={styles.logoutText}>Logout</span>
           </button>
 
@@ -186,59 +179,40 @@ const styles = {
     top: 0,
     left: 0,
     right: 0,
-    height: "200px",
+    height: "180px",
     background: colors.gradient,
-    borderBottomLeftRadius: "30px",
-    borderBottomRightRadius: "30px",
+    borderBottomLeftRadius: "20px",
+    borderBottomRightRadius: "20px",
     zIndex: 0,
-    boxShadow: `0 4px 20px ${colors.primary}60`,
-    pointerEvents: "none",
-  },
-
-  backgroundOverlay: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: "radial-gradient(circle at 50% 0%, rgba(255,255,255,0.1) 0%, transparent 70%)",
-    zIndex: 0,
-    pointerEvents: "none",
   },
 
   logoWrapper: {
     position: "fixed",
-    top: "20px",
+    top: "15px",
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 10,
     textAlign: "center",
-    pointerEvents: "none",
   },
 
   logo: {
-    height: "50px",
+    height: "45px",
     width: "auto",
     objectFit: "contain",
-    filter: `drop-shadow(0 4px 8px rgba(0,0,0,0.2))`,
-    userSelect: "none",
-    pointerEvents: "none",
   },
 
   bankName: {
     position: "fixed",
-    top: "75px",
+    top: "65px",
     left: "50%",
     transform: "translateX(-50%)",
     color: colors.white,
-    fontSize: "14px",
+    fontSize: "13px",
     fontWeight: "500",
-    letterSpacing: "1px",
+    letterSpacing: "0.5px",
     textAlign: "center",
     width: "100%",
     zIndex: 10,
-    textShadow: `0 2px 4px ${colors.primary}40`,
-    pointerEvents: "none",
   },
 
   loadingContainer: {
@@ -265,24 +239,21 @@ const styles = {
 
   contentWrapper: {
     position: "absolute",
-    top: "120px", // Start below logo and bank name
+    top: "100px",
     left: 0,
     right: 0,
     bottom: 0,
     display: "flex",
     justifyContent: "center",
-    overflow: "hidden",
     zIndex: 1,
-    pointerEvents: "none",
   },
 
   contentCard: {
     width: "90%",
-    maxWidth: "380px",
+    maxWidth: "350px",
     display: "flex",
     flexDirection: "column",
-    gap: "16px",
-    pointerEvents: "auto",
+    gap: "12px",
   },
 
   greetingSection: {
@@ -290,23 +261,20 @@ const styles = {
     alignItems: "center",
     gap: "12px",
     backgroundColor: "rgba(255,255,255,0.2)",
-    padding: "12px 16px",
-    borderRadius: "12px",
+    padding: "10px 14px",
+    borderRadius: "10px",
     backdropFilter: "blur(10px)",
-    border: `1px solid rgba(255,255,255,0.1)`,
-    boxShadow: `0 4px 10px rgba(0,0,0,0.1)`,
   },
 
   avatarContainer: {
-    width: "60px",
-    height: "60px",
+    width: "50px",
+    height: "50px",
     borderRadius: "50%",
     background: colors.gradient,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     border: `2px solid ${colors.white}`,
-    boxShadow: `0 4px 10px ${colors.primary}60`,
     flexShrink: 0,
   },
 
@@ -315,94 +283,86 @@ const styles = {
   },
 
   greeting: {
-    fontSize: "16px",
+    fontSize: "15px",
     color: colors.white,
-    marginBottom: "4px",
+    marginBottom: "2px",
     fontWeight: "500",
-    margin: 0,
-    textShadow: `0 2px 4px rgba(0,0,0,0.2)`,
   },
 
   employeeId: {
-    fontSize: "12px",
+    fontSize: "11px",
     color: "rgba(255,255,255,0.8)",
-    fontWeight: "400",
-    margin: 0,
   },
 
   timeCard: {
     backgroundColor: colors.white,
-    borderRadius: "16px",
-    padding: "20px",
-    boxShadow: `0 10px 25px -5px ${colors.primary}30`,
-    border: `1px solid ${colors.primary}10`,
+    borderRadius: "12px",
+    padding: "16px",
   },
 
   timeCardHeader: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
-    marginBottom: "12px",
+    gap: "4px",
+    marginBottom: "8px",
   },
 
   timeCardTitle: {
-    fontSize: "12px",
+    fontSize: "11px",
     fontWeight: "600",
     color: colors.primary,
-    letterSpacing: "0.5px",
+    letterSpacing: "0.3px",
   },
 
   timeDisplay: {
     display: "flex",
     alignItems: "baseline",
     justifyContent: "space-between",
-    marginBottom: "12px",
+    marginBottom: "8px",
   },
 
   timeNumber: {
-    fontSize: "36px",
+    fontSize: "32px",
     fontWeight: "700",
     color: colors.dark,
     fontFamily: "monospace",
   },
 
   timeAmPm: {
-    fontSize: "16px",
+    fontSize: "14px",
     fontWeight: "500",
     color: colors.gray,
   },
 
   dateDisplay: {
     borderTop: `1px solid ${colors.light}`,
-    paddingTop: "12px",
+    paddingTop: "8px",
   },
 
   dateDay: {
-    fontSize: "16px",
+    fontSize: "14px",
     fontWeight: "600",
     color: colors.dark,
     marginBottom: "2px",
   },
 
   dateFull: {
-    fontSize: "14px",
+    fontSize: "12px",
     color: colors.gray,
   },
 
   scanButton: {
     display: "flex",
     alignItems: "center",
-    gap: "12px",
-    padding: "14px 20px",
+    gap: "10px",
+    padding: "12px 16px",
     background: colors.gradient,
     border: "none",
-    borderRadius: "12px",
+    borderRadius: "10px",
     color: colors.white,
-    fontSize: "16px",
+    fontSize: "15px",
     fontWeight: "500",
     cursor: "pointer",
-    boxShadow: `0 8px 20px -5px ${colors.primary}60`,
-    transition: "all 0.2s ease",
     width: "100%",
   },
 
@@ -415,16 +375,15 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: "12px",
-    padding: "14px 20px",
+    gap: "10px",
+    padding: "12px 16px",
     background: colors.white,
     border: `1px solid ${colors.danger}`,
-    borderRadius: "12px",
+    borderRadius: "10px",
     color: colors.danger,
-    fontSize: "16px",
+    fontSize: "15px",
     fontWeight: "500",
     cursor: "pointer",
-    transition: "all 0.2s ease",
     width: "100%",
   },
 
@@ -435,13 +394,13 @@ const styles = {
 
   footerNote: {
     textAlign: "center",
-    fontSize: "12px",
+    fontSize: "11px",
     color: colors.gray,
-    marginTop: "8px",
+    marginTop: "5px",
   },
 };
 
-// Add keyframes for spinner animation and hover effects
+// Add keyframes for spinner animation
 const style = document.createElement('style');
 style.textContent = `
   @keyframes spin {
@@ -460,30 +419,10 @@ style.textContent = `
     width: 100%;
     overflow: hidden;
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
   
   button {
     cursor: pointer;
-  }
-  
-  .scanButton:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 25px -5px ${colors.primary} !important;
-  }
-  
-  .logoutButton:hover {
-    background-color: ${colors.danger};
-    color: white !important;
-  }
-  
-  .logoutButton:hover svg {
-    color: white !important;
   }
 `;
 document.head.appendChild(style);
