@@ -280,10 +280,8 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
   }
 });
 
-/* ---------------- HELPER FUNCTION FOR IST TIME ---------------- */
-
-// Helper function to get IST time (UTC+5:30) for recording attendance
-const getISTTime = () => {
+// Helper function to get Bhutan time (UTC+6) for recording attendance
+const getBhutanTime = () => {
   const now = new Date();
   
   // Get UTC time components
@@ -291,31 +289,25 @@ const getISTTime = () => {
   const utcMinutes = now.getUTCMinutes();
   const utcSeconds = now.getUTCSeconds();
   
-  // IST is UTC+5:30
-  let istHours = utcHours + 5;
-  let istMinutes = utcMinutes + 30;
+  // Bhutan is UTC+6
+  let bhutanHours = utcHours + 6;
+  let bhutanMinutes = utcMinutes;
   
-  // Handle minute overflow (if minutes >= 60)
-  if (istMinutes >= 60) {
-    istMinutes -= 60;
-    istHours += 1;
-  }
-  
-  // Handle hour overflow (if hours >= 24)
-  if (istHours >= 24) {
-    istHours -= 24;
+  // Handle overflow to next day
+  if (bhutanHours >= 24) {
+    bhutanHours -= 24;
   }
   
   // Format with leading zeros
-  const formattedHours = String(istHours).padStart(2, '0');
-  const formattedMinutes = String(istMinutes).padStart(2, '0');
+  const formattedHours = String(bhutanHours).padStart(2, '0');
+  const formattedMinutes = String(bhutanMinutes).padStart(2, '0');
   const formattedSeconds = String(utcSeconds).padStart(2, '0');
   
-  const istTimeString = `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
+  const bhutanTimeString = `${formattedHours}:${formattedMinutes}:${formattedSeconds}`;
   
-  console.log(`🕒 UTC Time: ${utcHours}:${utcMinutes}:${utcSeconds} → IST Time: ${istTimeString}`);
+  console.log(`🕒 UTC Time: ${utcHours}:${utcMinutes}:${utcSeconds} → Bhutan Time: ${bhutanTimeString}`);
   
-  return istTimeString;
+  return bhutanTimeString;
 };
 
 /* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
@@ -381,13 +373,13 @@ app.post("/attendance", verifyToken, async (req, res) => {
   }
 
   const today = new Date().toISOString().split("T")[0];
-  // Use IST time instead of UTC
-  const time = getISTTime();
+  // Use Bhutan time instead of IST
+  const time = getBhutanTime();
   
   console.log(`⏰ Time being stored in database: ${time}`);
 
   console.log("=".repeat(50));
-  console.log(`📝 Processing attendance for user ${userId} on ${today} at ${time} IST`);
+  console.log(`📝 Processing attendance for user ${userId} on ${today} at ${time} Bhutan Time`);
   console.log(`📍 Location: ${location}`);
 
   try {
@@ -426,7 +418,7 @@ app.post("/attendance", verifyToken, async (req, res) => {
         [time, location, incompleteRecord.id]
       );
       
-      console.log(`✅ Clock out successful for user ${userId} at ${time} IST`);
+      console.log(`✅ Clock out successful for user ${userId} at ${time} Bhutan Time`);
       
       res.json({ 
         success: true,
@@ -448,7 +440,7 @@ app.post("/attendance", verifyToken, async (req, res) => {
         [userId, today, time, latitude, longitude, location]
       );
       
-      console.log(`✅ Clock in successful for user ${userId} at ${time} IST`);
+      console.log(`✅ Clock in successful for user ${userId} at ${time} Bhutan Time`);
       
       res.json({ 
         success: true,
@@ -743,6 +735,7 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
     });
   }
 });
+
 /* ---------------- EMPLOYEE FULL HISTORY ---------------- */
 
 app.get("/admin/employee/:id/history", verifyAdmin, async (req, res) => {
