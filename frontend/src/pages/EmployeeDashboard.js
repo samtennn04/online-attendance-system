@@ -172,7 +172,7 @@ function EmployeeDashboard() {
             <FaArrowRight size={18} />
           </button>
 
-          {/* Logout Button - Text Horizontally Centered */}
+          {/* Logout Button */}
           <button onClick={handleLogout} style={styles.logoutButton} className="logoutButton">
             <FaSignOutAlt size={20} />
             <span style={styles.logoutText}>Logout</span>
@@ -245,19 +245,19 @@ const styles = {
     pointerEvents: "none",
   },
 
-  // New style for ScanTrack text - horizontally centered
+  // ScanTrack text - horizontally centered
   scanTrackText: {
     position: "fixed",
     top: "95px",
     left: "50%",
     transform: "translateX(-50%)",
     color: colors.white,
-    fontSize: "18px",
-    fontWeight: "600",
+    fontSize: "16px",
+    fontWeight: "500",
     letterSpacing: "1px",
     textAlign: "center",
     zIndex: 10,
-    textShadow: `0 2px 4px rgba(0,0,0,0.2)`,
+    textShadow: `0 2px 4px ${colors.primary}40`,
     whiteSpace: "nowrap",
   },
 
@@ -285,12 +285,13 @@ const styles = {
 
   contentWrapper: {
     position: "absolute",
-    top: "140px", // Adjusted to account for logo + ScanTrack
+    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
     display: "flex",
     justifyContent: "center",
+    alignItems: "center",
     zIndex: 1,
     pointerEvents: "none",
   },
@@ -303,6 +304,8 @@ const styles = {
     flexDirection: "column",
     pointerEvents: "auto",
     margin: "0 auto",
+    position: "relative",
+    top: "20px",
   },
 
   greetingSection: {
