@@ -167,7 +167,7 @@ function EmployeeDashboard() {
             <FaArrowRight size={18} />
           </button>
 
-          {/* Logout Button - Now with better visibility */}
+          {/* Logout Button */}
           <button onClick={handleLogout} style={styles.logoutButton} className="logoutButton">
             <FaSignOutAlt size={20} />
             <span style={styles.logoutText}>Logout</span>
@@ -191,6 +191,9 @@ const styles = {
     backgroundColor: colors.offWhite,
     overflow: "hidden",
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    WebkitOverflowScrolling: "touch",
+    msOverflowStyle: "none",
+    scrollbarWidth: "none",
   },
 
   backgroundPattern: {
@@ -204,6 +207,7 @@ const styles = {
     borderBottomRightRadius: "30px",
     zIndex: 0,
     boxShadow: `0 10px 30px ${colors.primary}80`,
+    pointerEvents: "none",
   },
 
   backgroundOverlay: {
@@ -235,6 +239,10 @@ const styles = {
     maxWidth: "250px",
     objectFit: "contain",
     filter: `drop-shadow(0 4px 12px rgba(0,0,0,0.2))`,
+    userSelect: "none",
+    WebkitUserSelect: "none",
+    MsUserSelect: "none",
+    pointerEvents: "none",
   },
 
   loadingContainer: {
@@ -248,6 +256,7 @@ const styles = {
     justifyContent: "center",
     background: colors.gradient,
     zIndex: 100,
+    overflow: "hidden",
   },
 
   loadingSpinner: {
@@ -260,25 +269,28 @@ const styles = {
   },
 
   contentWrapper: {
-    position: "fixed",
-    top: "90px",
+    position: "absolute",
+    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
     display: "flex",
     justifyContent: "center",
-    alignItems: "flex-start",
+    alignItems: "center",
     overflow: "hidden",
     zIndex: 1,
+    pointerEvents: "none",
   },
 
   content: {
     width: "90%",
     maxWidth: "400px",
-    height: "calc(100vh - 110px)",
+    maxHeight: "calc(100vh - 20px)",
     display: "flex",
     flexDirection: "column",
-    overflow: "hidden",
+    justifyContent: "center",
+    pointerEvents: "auto",
+    margin: "0 auto",
   },
 
   greetingSection: {
@@ -292,6 +304,7 @@ const styles = {
     borderRadius: "60px",
     backdropFilter: "blur(10px)",
     border: `1px solid ${colors.primary}40`,
+    WebkitBackdropFilter: "blur(10px)",
   },
 
   avatarContainer: {
@@ -318,12 +331,14 @@ const styles = {
     fontWeight: "600",
     lineHeight: "1.3",
     textShadow: `0 2px 4px ${colors.primary}40`,
+    margin: 0,
   },
 
   employeeId: {
     fontSize: "12px",
     color: "rgba(255,255,255,0.8)",
     fontWeight: "500",
+    margin: 0,
   },
 
   timeCard: {
@@ -428,11 +443,13 @@ const styles = {
     fontSize: "18px",
     fontWeight: "600",
     color: colors.dark,
+    margin: 0,
   },
 
   dateFull: {
     fontSize: "15px",
     color: colors.gray,
+    margin: 0,
   },
 
   timeBar: {
@@ -468,6 +485,8 @@ const styles = {
     width: "100%",
     flexShrink: 0,
     transition: "transform 0.2s ease, box-shadow 0.2s ease",
+    WebkitTapHighlightColor: "transparent",
+    outline: "none",
   },
 
   scanButtonText: {
@@ -475,7 +494,6 @@ const styles = {
     textAlign: "center",
   },
 
-  // FIXED: Logout button - now more visible
   logoutButton: {
     display: "flex",
     alignItems: "center",
@@ -495,6 +513,8 @@ const styles = {
     flexShrink: 0,
     transition: "all 0.2s ease",
     boxShadow: `0 4px 10px ${colors.danger}20`,
+    WebkitTapHighlightColor: "transparent",
+    outline: "none",
   },
 
   logoutText: {
@@ -509,6 +529,7 @@ const styles = {
     marginTop: "10px",
     padding: "10px 0",
     borderTop: `1px solid ${colors.light}`,
+    margin: "10px 0 0 0",
   },
 };
 
@@ -520,8 +541,71 @@ style.textContent = `
     100% { transform: rotate(360deg); }
   }
   
+  * {
+    -webkit-overflow-scrolling: touch;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  *::-webkit-scrollbar {
+    display: none;
+  }
+  
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    -webkit-overflow-scrolling: touch;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    touch-action: none;
+  }
+
+  body {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+  }
+  
   button {
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  button:focus {
+    outline: none;
+  }
+  
+  button:focus-visible {
+    outline: 2px solid ${colors.primary};
+    outline-offset: 2px;
   }
   
   .scanButton:hover {
@@ -544,29 +628,17 @@ style.textContent = `
     transform: translateY(0);
   }
 
-  button:focus-visible {
-    outline: 2px solid ${colors.primary};
-    outline-offset: 2px;
-  }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    height: 100%;
-    width: 100%;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-  }
-
-  #root {
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-    position: fixed;
+  img {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    pointer-events: none;
   }
 `;
 document.head.appendChild(style);
