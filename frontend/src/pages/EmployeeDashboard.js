@@ -520,7 +520,7 @@ const styles = {
 logoutText: {
   flex: 1,
   textAlign: "center",
-  marginLeft: "20px", // Add this to push text right
+  marginLeft: "50px", // Add this to push text right
   marginRight: "auto", // Add this for better centering
 },
 
