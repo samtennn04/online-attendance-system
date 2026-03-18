@@ -1101,7 +1101,7 @@ cron.schedule('59 23 * * *', () => {
   markAbsentEmployees(yesterday);
 }, {
   scheduled: true,
-  timezone: "Asia/Kolkata"
+  timezone: "Asia/Thimphu"
 });
 
 console.log("⏰ Scheduled end of day job set for 11:59 PM daily (marking previous day's absent)");
