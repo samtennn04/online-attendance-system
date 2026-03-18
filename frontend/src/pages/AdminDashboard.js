@@ -62,7 +62,20 @@ const AdminDashboard = () => {
   
   const itemsPerPage = 15;
 
-  // ========== ADD THIS useEffect TO MONITOR STATE CHANGES ==========
+  // ========== DEBUG: Check raw attendance data ==========
+  useEffect(() => {
+    if (attendance.length > 0) {
+      console.log("🔍 RAW ATTENDANCE DATA SAMPLE:", {
+        first_record: attendance[0],
+        clock_in: attendance[0].clock_in,
+        clock_in_type: typeof attendance[0].clock_in,
+        clock_in_value: attendance[0].clock_in,
+        full_record: JSON.stringify(attendance[0], null, 2)
+      });
+    }
+  }, [attendance]);
+
+  // ========== MONITOR STATE CHANGES ==========
   useEffect(() => {
     console.log("🔄 attendance state UPDATED:", attendance);
   }, [attendance]);
@@ -79,51 +92,76 @@ const AdminDashboard = () => {
     });
   }, []);
 
-// Convert time to 12-hour format with AM/PM
-const formatTime = useCallback((time) => {
-  if (!time) return "-";
-  
-  console.log("Formatting time:", time); // Debug log
-  
-  // Handle different time formats
-  try {
-    // If it's a full datetime string (like from database)
-    if (time.includes('T') || time.includes(' ')) {
-      const date = new Date(time);
-      if (!isNaN(date.getTime())) {
-        return date.toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        });
-      }
-    }
+  // Convert time to 12-hour format with AM/PM - FIXED VERSION
+  const formatTime = useCallback((time) => {
+    if (!time) return "-";
     
-    // Handle time string in format "HH:MM:SS" or "HH:MM"
-    if (time.includes(':')) {
-      const parts = time.split(':');
-      let hours = parseInt(parts[0], 10);
-      let minutes = parts[1];
-      
-      // Handle if seconds are included (HH:MM:SS)
-      if (parts.length > 2) {
-        minutes = parts[1]; // Just take minutes, ignore seconds
+    console.log("🔵 formatTime received:", {
+      value: time,
+      type: typeof time,
+      length: typeof time === 'string' ? time.length : 'N/A',
+      includes_am_pm: typeof time === 'string' && (time.includes('am') || time.includes('pm')),
+      includes_colon: typeof time === 'string' && time.includes(':'),
+      includes_T: typeof time === 'string' && time.includes('T')
+    });
+    
+    try {
+      // If it's already in "10:23:21 am" format, return as is
+      if (typeof time === 'string' && 
+          (time.toLowerCase().includes('am') || time.toLowerCase().includes('pm'))) {
+        console.log("🔵 Already formatted time, returning as is:", time);
+        return time;
       }
       
-      // Convert to 12-hour format
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12 || 12; // Convert 0 to 12 for 12 AM
+      // If it's a full datetime string (ISO format)
+      if (typeof time === 'string' && time.includes('T')) {
+        const date = new Date(time);
+        console.log("🔵 Parsed date:", date.toString());
+        
+        if (!isNaN(date.getTime())) {
+          // Force Bhutan timezone (UTC+6)
+          const options = {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Asia/Thimphu'
+          };
+          
+          const formatted = date.toLocaleTimeString('en-US', options);
+          console.log("🔵 Formatted Bhutan time:", formatted);
+          return formatted;
+        }
+      }
       
-      return `${hours}:${minutes} ${ampm}`;
+      // Handle time string in format "HH:MM:SS" or "HH:MM"
+      if (typeof time === 'string' && time.includes(':')) {
+        const parts = time.split(':');
+        let hours = parseInt(parts[0], 10);
+        let minutes = parts[1];
+        
+        // Handle if seconds are included
+        if (parts.length > 2) {
+          minutes = parts[1];
+        }
+        
+        console.log("🔵 Time parts - hours:", hours, "minutes:", minutes);
+        
+        // Convert to 12-hour format
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const hour12 = hours % 12 || 12;
+        
+        const result = `${hour12}:${minutes} ${ampm}`;
+        console.log("🔵 Formatted result:", result);
+        
+        return result;
+      }
+      
+      return time;
+    } catch (err) {
+      console.error("❌ Error formatting time:", err);
+      return time;
     }
-    
-    // If it's just a time string that might already be formatted
-    return time;
-  } catch (err) {
-    console.error("Error formatting time:", err);
-    return time;
-  }
-}, []);
+  }, []);
 
   const formatLocation = useCallback((location) => {
     if (!location || location === "Unknown" || location === "-" || location === "null") {
@@ -220,6 +258,8 @@ const formatTime = useCallback((time) => {
         
         if (response.data.attendance && response.data.attendance.length > 0) {
           console.log("📋 First record:", response.data.attendance[0]);
+          console.log("⏰ First record clock_in:", response.data.attendance[0].clock_in);
+          console.log("⏰ First record clock_in type:", typeof response.data.attendance[0].clock_in);
         }
         
         return response.data.attendance || [];
@@ -293,114 +333,114 @@ const formatTime = useCallback((time) => {
   }, []);
 
   // ========== GENERATE COMPLETE ATTENDANCE ==========
-const generateCompleteAttendance = useCallback(() => {
-  console.log("🔄 Generating complete attendance...");
-  console.log("👥 Employees count:", employees.length);
-  console.log("📊 Raw attendance count:", attendance.length);
-  console.log("📊 Raw attendance data:", attendance);
-  
-  if (!employees.length) {
-    console.log("⚠️ No employees to generate attendance for");
-    return [];
-  }
-
-  const year = selectedMonth.getFullYear();
-  const month = selectedMonth.getMonth() + 1;
-  
-  console.log(`📅 Selected month: ${year}-${month}`);
-  
-  const daysInMonth = new Date(year, month, 0).getDate();
-  console.log(`📅 Days in month: ${daysInMonth}`);
-  
-  const completeRecords = [];
-
-  // Create a map of existing attendance records
-  const attendanceMap = new Map();
-  attendance.forEach(record => {
-    const key = `${record.employee_id}-${record.date}`;
-    if (!attendanceMap.has(key)) {
-      attendanceMap.set(key, []);
-    }
-    attendanceMap.get(key).push(record);
-  });
-  
-  console.log("🗺️ Created attendance map with keys:", Array.from(attendanceMap.keys()));
-
-  employees.forEach(employee => {
-    const registrationDate = employee.created_at ? new Date(employee.created_at) : new Date();
-    registrationDate.setHours(0, 0, 0, 0);
+  const generateCompleteAttendance = useCallback(() => {
+    console.log("🔄 Generating complete attendance...");
+    console.log("👥 Employees count:", employees.length);
+    console.log("📊 Raw attendance count:", attendance.length);
+    console.log("📊 Raw attendance data:", attendance);
     
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const currentDate = new Date(dateStr);
-      currentDate.setHours(0, 0, 0, 0);
-      
-      // Skip dates before registration
-      if (currentDate < registrationDate) continue;
-      
-      const dayRecords = attendanceMap.get(`${employee.id}-${dateStr}`) || [];
-
-      if (dayRecords.length > 0) {
-        // We have records for this day
-        let earliestClockIn = null;
-        let latestClockOut = null;
-        let location = null;
-        // Store the actual time values from the first record
-        let actualClockIn = null;
-        let actualClockOut = null;
-        
-        dayRecords.forEach(record => {
-          if (record.clock_in) {
-            if (!earliestClockIn || record.clock_in < earliestClockIn) {
-              earliestClockIn = record.clock_in;
-              actualClockIn = record.clock_in; // Keep the exact value
-            }
-          }
-          if (record.clock_out) {
-            if (!latestClockOut || record.clock_out > latestClockOut) {
-              latestClockOut = record.clock_out;
-              actualClockOut = record.clock_out; // Keep the exact value
-            }
-          }
-          if (record.location_name && !location) {
-            location = record.location_name;
-          }
-        });
-        
-        let status = "absent";
-        if (earliestClockIn && latestClockOut) {
-          status = "present";
-        } else if (earliestClockIn || latestClockOut) {
-          status = "partial";
-        }
-        
-        completeRecords.push({
-          employee_id: employee.id,
-          username: employee.username,
-          employee_email: employee.email,
-          date: dateStr,
-          clock_in: actualClockIn || earliestClockIn, // Use the actual value
-          clock_out: actualClockOut || latestClockOut, // Use the actual value
-          location_name: location || "Unknown",
-          status: status,
-          scan_count: dayRecords.length
-        });
-      }
-      // Don't add absent records for dates without attendance
+    if (!employees.length) {
+      console.log("⚠️ No employees to generate attendance for");
+      return [];
     }
-  });
 
-  console.log(`✅ Generated ${completeRecords.length} complete records`);
-  console.log("📋 First 3 records:", completeRecords.slice(0, 3));
-  
-  // Sort by date (newest first) and employee name
-  return completeRecords.sort((a, b) => {
-    if (a.date < b.date) return 1;
-    if (a.date > b.date) return -1;
-    return a.username.localeCompare(b.username);
-  });
-  
-}, [employees, attendance, selectedMonth]);
+    const year = selectedMonth.getFullYear();
+    const month = selectedMonth.getMonth() + 1;
+    
+    console.log(`📅 Selected month: ${year}-${month}`);
+    
+    const daysInMonth = new Date(year, month, 0).getDate();
+    console.log(`📅 Days in month: ${daysInMonth}`);
+    
+    const completeRecords = [];
+
+    // Create a map of existing attendance records
+    const attendanceMap = new Map();
+    attendance.forEach(record => {
+      const key = `${record.employee_id}-${record.date}`;
+      if (!attendanceMap.has(key)) {
+        attendanceMap.set(key, []);
+      }
+      attendanceMap.get(key).push(record);
+    });
+    
+    console.log("🗺️ Created attendance map with keys:", Array.from(attendanceMap.keys()));
+
+    employees.forEach(employee => {
+      const registrationDate = employee.created_at ? new Date(employee.created_at) : new Date();
+      registrationDate.setHours(0, 0, 0, 0);
+      
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const currentDate = new Date(dateStr);
+        currentDate.setHours(0, 0, 0, 0);
+        
+        // Skip dates before registration
+        if (currentDate < registrationDate) continue;
+        
+        const dayRecords = attendanceMap.get(`${employee.id}-${dateStr}`) || [];
+
+        if (dayRecords.length > 0) {
+          // We have records for this day
+          let earliestClockIn = null;
+          let latestClockOut = null;
+          let location = null;
+          // Store the actual time values from the first record
+          let actualClockIn = null;
+          let actualClockOut = null;
+          
+          dayRecords.forEach(record => {
+            if (record.clock_in) {
+              if (!earliestClockIn || record.clock_in < earliestClockIn) {
+                earliestClockIn = record.clock_in;
+                actualClockIn = record.clock_in; // Keep the exact value
+              }
+            }
+            if (record.clock_out) {
+              if (!latestClockOut || record.clock_out > latestClockOut) {
+                latestClockOut = record.clock_out;
+                actualClockOut = record.clock_out; // Keep the exact value
+              }
+            }
+            if (record.location_name && !location) {
+              location = record.location_name;
+            }
+          });
+          
+          let status = "absent";
+          if (earliestClockIn && latestClockOut) {
+            status = "present";
+          } else if (earliestClockIn || latestClockOut) {
+            status = "partial";
+          }
+          
+          completeRecords.push({
+            employee_id: employee.id,
+            username: employee.username,
+            employee_email: employee.email,
+            date: dateStr,
+            clock_in: actualClockIn || earliestClockIn, // Use the actual value
+            clock_out: actualClockOut || latestClockOut, // Use the actual value
+            location_name: location || "Unknown",
+            status: status,
+            scan_count: dayRecords.length
+          });
+        }
+        // Don't add absent records for dates without attendance
+      }
+    });
+
+    console.log(`✅ Generated ${completeRecords.length} complete records`);
+    console.log("📋 First 3 records:", completeRecords.slice(0, 3));
+    
+    // Sort by date (newest first) and employee name
+    return completeRecords.sort((a, b) => {
+      if (a.date < b.date) return 1;
+      if (a.date > b.date) return -1;
+      return a.username.localeCompare(b.username);
+    });
+    
+  }, [employees, attendance, selectedMonth]);
 
   // ========== MEMOIZED VALUES ==========
   const completeAttendanceData = useMemo(() => {
