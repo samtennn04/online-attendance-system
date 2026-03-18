@@ -98,16 +98,18 @@ function EmployeeDashboard() {
 
   return (
     <div style={styles.container}>
+      {/* Fixed Background */}
       <div style={styles.backgroundPattern}></div>
       <div style={styles.backgroundOverlay}></div>
       
-      {/* Logo at Top Center */}
+      {/* Fixed Logo at Top */}
       <div style={styles.logoWrapper}>
         <img src={logo} alt="Kuensel Logo" style={styles.logo} />
       </div>
       
+      {/* Centered Content */}
       <div style={styles.contentWrapper}>
-        <div style={styles.content}>
+        <div style={styles.contentCard}>
           {/* Avatar and Greeting */}
           <div style={styles.greetingSection}>
             <div style={styles.avatarContainer}>
@@ -201,10 +203,10 @@ const styles = {
     top: 0,
     left: 0,
     right: 0,
-    height: "220px",
+    height: "280px", // Increased height
     background: colors.gradient,
-    borderBottomLeftRadius: "30px",
-    borderBottomRightRadius: "30px",
+    borderBottomLeftRadius: "40px", // Larger radius
+    borderBottomRightRadius: "40px",
     zIndex: 0,
     boxShadow: `0 10px 30px ${colors.primary}80`,
     pointerEvents: "none",
@@ -223,7 +225,7 @@ const styles = {
 
   logoWrapper: {
     position: "fixed",
-    top: "15px",
+    top: "20px",
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 10,
@@ -280,24 +282,25 @@ const styles = {
     overflow: "hidden",
     zIndex: 1,
     pointerEvents: "none",
+    paddingTop: "40px", // Add space for logo
   },
 
-  content: {
+  contentCard: {
     width: "90%",
-    maxWidth: "400px",
-    maxHeight: "calc(100vh - 20px)",
+    maxWidth: "420px",
+    backgroundColor: "transparent",
     display: "flex",
     flexDirection: "column",
-    justifyContent: "center",
     pointerEvents: "auto",
     margin: "0 auto",
+    transform: "translateY(-10px)", // Fine-tune vertical position
   },
 
   greetingSection: {
     display: "flex",
     alignItems: "center",
     gap: "16px",
-    marginBottom: "20px",
+    marginBottom: "24px",
     flexShrink: 0,
     backgroundColor: "rgba(255,255,255,0.15)",
     padding: "12px 16px",
@@ -305,6 +308,7 @@ const styles = {
     backdropFilter: "blur(10px)",
     border: `1px solid ${colors.primary}40`,
     WebkitBackdropFilter: "blur(10px)",
+    boxShadow: `0 4px 15px rgba(0,0,0,0.1)`,
   },
 
   avatarContainer: {
@@ -344,7 +348,7 @@ const styles = {
   timeCard: {
     backgroundColor: colors.white,
     borderRadius: "28px",
-    padding: "24px",
+    padding: "28px", // Increased padding
     marginBottom: "20px",
     boxShadow: `0 20px 35px -8px ${colors.primary}40`,
     border: `1px solid ${colors.primary}20`,
@@ -484,7 +488,7 @@ const styles = {
     marginBottom: "12px",
     width: "100%",
     flexShrink: 0,
-    transition: "transform 0.2s ease, box-shadow 0.2s ease",
+    transition: "all 0.2s ease",
     WebkitTapHighlightColor: "transparent",
     outline: "none",
   },
@@ -507,7 +511,7 @@ const styles = {
     fontSize: "18px",
     fontWeight: "600",
     cursor: "pointer",
-    marginTop: "12px",
+    marginTop: "8px", // Reduced from 12px
     marginBottom: "10px",
     width: "100%",
     flexShrink: 0,
@@ -526,10 +530,9 @@ const styles = {
     textAlign: "center",
     fontSize: "12px",
     color: colors.gray,
-    marginTop: "10px",
+    marginTop: "15px",
     padding: "10px 0",
     borderTop: `1px solid ${colors.light}`,
-    margin: "10px 0 0 0",
   },
 };
 
@@ -545,6 +548,9 @@ style.textContent = `
     -webkit-overflow-scrolling: touch;
     -ms-overflow-style: none;
     scrollbar-width: none;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
   
   *::-webkit-scrollbar {
