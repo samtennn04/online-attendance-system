@@ -98,25 +98,22 @@ function EmployeeDashboard() {
 
   return (
     <div style={styles.container}>
-      {/* Background */}
+      {/* Fixed Background */}
       <div style={styles.backgroundPattern}></div>
       <div style={styles.backgroundOverlay}></div>
       
-      {/* Logo at Top */}
+      {/* Fixed Logo at Top */}
       <div style={styles.logoWrapper}>
-        <img src={logo} alt="KUENSEL" style={styles.logo} />
+        <img src={logo} alt="Kuensel Logo" style={styles.logo} />
       </div>
       
-      {/* Main Content */}
+      {/* Centered Content */}
       <div style={styles.contentWrapper}>
         <div style={styles.contentCard}>
-          {/* Bank Name */}
-          <div style={styles.bankName}>THE PEOPLE'S BANK OF SANTE</div>
-
           {/* Avatar and Greeting */}
           <div style={styles.greetingSection}>
             <div style={styles.avatarContainer}>
-              <FaUserCircle size={60} color={colors.white} />
+              <FaUserCircle size={72} color={colors.white} />
             </div>
             <div style={styles.greetingText}>
               <p style={styles.greeting}>{greeting}</p>
@@ -124,35 +121,56 @@ function EmployeeDashboard() {
             </div>
           </div>
 
-          {/* Time Display Card */}
+          {/* Large Time Display Card */}
           <div style={styles.timeCard}>
             <div style={styles.timeCardHeader}>
-              <MdAccessTime size={18} color={colors.primary} />
-              <span style={styles.timeCardTitle}>CURRENT TIME</span>
+              <MdAccessTime size={20} color={colors.primary} />
+              <span style={styles.timeCardTitle}>Current Time</span>
             </div>
             
-            <div style={styles.timeDisplay}>
-              <span style={styles.timeNumber}>
-                {hours.toString().padStart(2, '0')}:{minutes}:{seconds}
-              </span>
-              <span style={styles.timeAmPm}>{ampm}</span>
+            <div style={styles.timeCardContent}>
+              <div style={styles.largeTimeDisplay}>
+                <span style={styles.hours}>
+                  {hours.toString().padStart(2, '0')}
+                </span>
+                <span style={styles.separator}>:</span>
+                <span style={styles.minutes}>{minutes}</span>
+                <span style={styles.secondsSeparator}>:</span>
+                <span style={styles.seconds}>{seconds}</span>
+              </div>
+              
+              <div style={styles.ampmDisplay}>
+                {ampm}
+              </div>
             </div>
 
-            <div style={styles.dateDisplay}>
-              <div style={styles.dateDay}>{dayName}</div>
-              <div style={styles.dateFull}>{monthName} {dayNumber}, {year}</div>
+            <div style={styles.dateDetails}>
+              <div style={styles.dateBox}>
+                <span style={styles.dateDay}>{dayName}</span>
+                <span style={styles.dateFull}>{monthName} {dayNumber}, {year}</span>
+              </div>
+            </div>
+
+            {/* Animated Time Bar */}
+            <div style={styles.timeBar}>
+              <div 
+                style={{
+                  ...styles.timeBarFill,
+                  width: `${(currentTime.getSeconds() / 60) * 100}%`
+                }}
+              ></div>
             </div>
           </div>
 
           {/* Scan QR Button */}
-          <button onClick={handleScanQR} style={styles.scanButton}>
-            <FaQrcode size={20} />
+          <button onClick={handleScanQR} style={styles.scanButton} className="scanButton">
+            <FaQrcode size={24} />
             <span style={styles.scanButtonText}>Scan QR Code</span>
-            <FaArrowRight size={16} />
+            <FaArrowRight size={18} />
           </button>
 
           {/* Logout Button */}
-          <button onClick={handleLogout} style={styles.logoutButton}>
+          <button onClick={handleLogout} style={styles.logoutButton} className="logoutButton">
             <FaSignOutAlt size={20} />
             <span style={styles.logoutText}>Logout</span>
           </button>
@@ -175,6 +193,9 @@ const styles = {
     backgroundColor: colors.offWhite,
     overflow: "hidden",
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+    WebkitOverflowScrolling: "touch",
+    msOverflowStyle: "none",
+    scrollbarWidth: "none",
   },
 
   backgroundPattern: {
@@ -182,12 +203,13 @@ const styles = {
     top: 0,
     left: 0,
     right: 0,
-    height: "200px",
+    height: "280px", // Increased height
     background: colors.gradient,
-    borderBottomLeftRadius: "30px",
-    borderBottomRightRadius: "30px",
+    borderBottomLeftRadius: "40px", // Larger radius
+    borderBottomRightRadius: "40px",
     zIndex: 0,
-    boxShadow: `0 4px 20px ${colors.primary}60`,
+    boxShadow: `0 10px 30px ${colors.primary}80`,
+    pointerEvents: "none",
   },
 
   backgroundOverlay: {
@@ -196,7 +218,7 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    background: "radial-gradient(circle at 50% 0%, rgba(255,255,255,0.1) 0%, transparent 70%)",
+    background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.15) 0%, transparent 60%)",
     zIndex: 0,
     pointerEvents: "none",
   },
@@ -207,13 +229,22 @@ const styles = {
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 10,
-    textAlign: "center",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    pointerEvents: "none",
   },
 
   logo: {
-    height: "50px",
+    height: "70px",
     width: "auto",
+    maxWidth: "250px",
     objectFit: "contain",
+    filter: `drop-shadow(0 4px 12px rgba(0,0,0,0.2))`,
+    userSelect: "none",
+    WebkitUserSelect: "none",
+    MsUserSelect: "none",
+    pointerEvents: "none",
   },
 
   loadingContainer: {
@@ -227,68 +258,69 @@ const styles = {
     justifyContent: "center",
     background: colors.gradient,
     zIndex: 100,
+    overflow: "hidden",
   },
 
   loadingSpinner: {
-    width: "40px",
-    height: "40px",
-    border: `3px solid ${colors.white}40`,
-    borderTop: `3px solid ${colors.white}`,
+    width: "48px",
+    height: "48px",
+    border: `4px solid ${colors.primary}40`,
+    borderTop: `4px solid ${colors.white}`,
     borderRadius: "50%",
     animation: "spin 1s linear infinite",
   },
 
   contentWrapper: {
     position: "absolute",
-    top: "80px", // Start below logo
+    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
     display: "flex",
     justifyContent: "center",
+    alignItems: "center",
     overflow: "hidden",
     zIndex: 1,
+    pointerEvents: "none",
+    paddingTop: "40px", // Add space for logo
   },
 
   contentCard: {
     width: "90%",
-    maxWidth: "380px",
+    maxWidth: "420px",
+    backgroundColor: "transparent",
     display: "flex",
     flexDirection: "column",
-    gap: "16px",
-  },
-
-  bankName: {
-    textAlign: "center",
-    color: colors.white,
-    fontSize: "14px",
-    fontWeight: "500",
-    letterSpacing: "1px",
-    marginBottom: "8px",
-    textShadow: `0 2px 4px ${colors.primary}40`,
+    pointerEvents: "auto",
+    margin: "0 auto",
+    transform: "translateY(-10px)", // Fine-tune vertical position
   },
 
   greetingSection: {
     display: "flex",
     alignItems: "center",
-    gap: "12px",
-    backgroundColor: "rgba(255,255,255,0.2)",
+    gap: "16px",
+    marginBottom: "24px",
+    flexShrink: 0,
+    backgroundColor: "rgba(255,255,255,0.15)",
     padding: "12px 16px",
-    borderRadius: "12px",
+    borderRadius: "60px",
     backdropFilter: "blur(10px)",
-    border: `1px solid rgba(255,255,255,0.1)`,
+    border: `1px solid ${colors.primary}40`,
+    WebkitBackdropFilter: "blur(10px)",
+    boxShadow: `0 4px 15px rgba(0,0,0,0.1)`,
   },
 
   avatarContainer: {
-    width: "60px",
-    height: "60px",
+    width: "70px",
+    height: "70px",
     borderRadius: "50%",
     background: colors.gradient,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    border: `2px solid ${colors.white}`,
-    boxShadow: `0 4px 10px ${colors.primary}60`,
+    border: `3px solid ${colors.white}`,
+    boxShadow: `0 8px 20px ${colors.primary}80`,
     flexShrink: 0,
   },
 
@@ -297,92 +329,168 @@ const styles = {
   },
 
   greeting: {
-    fontSize: "16px",
+    fontSize: "18px",
     color: colors.white,
     marginBottom: "4px",
-    fontWeight: "500",
+    fontWeight: "600",
+    lineHeight: "1.3",
+    textShadow: `0 2px 4px ${colors.primary}40`,
+    margin: 0,
   },
 
   employeeId: {
     fontSize: "12px",
     color: "rgba(255,255,255,0.8)",
-    fontWeight: "400",
+    fontWeight: "500",
+    margin: 0,
   },
 
   timeCard: {
     backgroundColor: colors.white,
-    borderRadius: "16px",
-    padding: "20px",
-    boxShadow: `0 10px 25px -5px ${colors.primary}30`,
-    border: `1px solid ${colors.primary}10`,
+    borderRadius: "28px",
+    padding: "28px", // Increased padding
+    marginBottom: "20px",
+    boxShadow: `0 20px 35px -8px ${colors.primary}40`,
+    border: `1px solid ${colors.primary}20`,
+    flexShrink: 0,
   },
 
   timeCardHeader: {
     display: "flex",
     alignItems: "center",
-    gap: "6px",
-    marginBottom: "12px",
+    gap: "8px",
+    marginBottom: "16px",
   },
 
   timeCardTitle: {
-    fontSize: "12px",
+    fontSize: "14px",
     fontWeight: "600",
     color: colors.primary,
+    textTransform: "uppercase",
     letterSpacing: "0.5px",
   },
 
-  timeDisplay: {
+  timeCardContent: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "16px",
+  },
+
+  largeTimeDisplay: {
     display: "flex",
     alignItems: "baseline",
-    justifyContent: "space-between",
-    marginBottom: "12px",
   },
 
-  timeNumber: {
-    fontSize: "36px",
+  hours: {
+    fontSize: "52px",
     fontWeight: "700",
+    color: colors.primary,
+    lineHeight: 1,
+    letterSpacing: "-1px",
+  },
+
+  minutes: {
+    fontSize: "52px",
+    fontWeight: "700",
+    color: colors.primary,
+    lineHeight: 1,
+    letterSpacing: "-1px",
+  },
+
+  seconds: {
+    fontSize: "32px",
+    fontWeight: "600",
+    color: colors.secondary,
+    lineHeight: 1,
+  },
+
+  separator: {
+    fontSize: "52px",
+    fontWeight: "700",
+    color: colors.primary,
+    lineHeight: 1,
+    margin: "0 2px",
+  },
+
+  secondsSeparator: {
+    fontSize: "32px",
+    fontWeight: "600",
+    color: colors.secondary,
+    lineHeight: 1,
+    margin: "0 2px",
+  },
+
+  ampmDisplay: {
+    fontSize: "20px",
+    fontWeight: "600",
     color: colors.dark,
-    fontFamily: "monospace",
+    backgroundColor: colors.offWhite,
+    padding: "8px 16px",
+    borderRadius: "40px",
+    border: `1px solid ${colors.light}`,
+    minWidth: "70px",
+    textAlign: "center",
   },
 
-  timeAmPm: {
-    fontSize: "16px",
-    fontWeight: "500",
-    color: colors.gray,
+  dateDetails: {
+    marginBottom: "20px",
   },
 
-  dateDisplay: {
-    borderTop: `1px solid ${colors.light}`,
-    paddingTop: "12px",
+  dateBox: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
   },
 
   dateDay: {
-    fontSize: "16px",
+    fontSize: "18px",
     fontWeight: "600",
     color: colors.dark,
-    marginBottom: "2px",
+    margin: 0,
   },
 
   dateFull: {
-    fontSize: "14px",
+    fontSize: "15px",
     color: colors.gray,
+    margin: 0,
+  },
+
+  timeBar: {
+    width: "100%",
+    height: "8px",
+    backgroundColor: colors.light,
+    borderRadius: "4px",
+    overflow: "hidden",
+  },
+
+  timeBarFill: {
+    height: "100%",
+    backgroundColor: colors.primary,
+    borderRadius: "4px",
+    transition: "width 1s linear",
   },
 
   scanButton: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: "12px",
-    padding: "14px 20px",
+    padding: "16px 20px",
     background: colors.gradient,
     border: "none",
-    borderRadius: "12px",
+    borderRadius: "60px",
     color: colors.white,
-    fontSize: "16px",
-    fontWeight: "500",
+    fontSize: "18px",
+    fontWeight: "600",
     cursor: "pointer",
-    boxShadow: `0 8px 20px -5px ${colors.primary}60`,
-    transition: "all 0.2s ease",
+    boxShadow: `0 15px 30px -8px ${colors.primary}80`,
+    marginBottom: "12px",
     width: "100%",
+    flexShrink: 0,
+    transition: "all 0.2s ease",
+    WebkitTapHighlightColor: "transparent",
+    outline: "none",
   },
 
   scanButtonText: {
@@ -395,16 +503,22 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: "12px",
-    padding: "14px 20px",
+    padding: "16px 20px",
     background: colors.white,
-    border: `1px solid ${colors.danger}`,
-    borderRadius: "12px",
+    border: `2px solid ${colors.danger}`,
+    borderRadius: "60px",
     color: colors.danger,
-    fontSize: "16px",
-    fontWeight: "500",
+    fontSize: "18px",
+    fontWeight: "600",
     cursor: "pointer",
-    transition: "all 0.2s ease",
+    marginTop: "8px", // Reduced from 12px
+    marginBottom: "10px",
     width: "100%",
+    flexShrink: 0,
+    transition: "all 0.2s ease",
+    boxShadow: `0 4px 10px ${colors.danger}20`,
+    WebkitTapHighlightColor: "transparent",
+    outline: "none",
   },
 
   logoutText: {
@@ -416,7 +530,9 @@ const styles = {
     textAlign: "center",
     fontSize: "12px",
     color: colors.gray,
-    marginTop: "8px",
+    marginTop: "15px",
+    padding: "10px 0",
+    borderTop: `1px solid ${colors.light}`,
   },
 };
 
@@ -429,34 +545,106 @@ style.textContent = `
   }
   
   * {
+    -webkit-overflow-scrolling: touch;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
     margin: 0;
     padding: 0;
     box-sizing: border-box;
   }
   
-  html, body, #root {
+  *::-webkit-scrollbar {
+    display: none;
+  }
+  
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    -webkit-overflow-scrolling: touch;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    touch-action: none;
+  }
+
+  body {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
     height: 100%;
     width: 100%;
     overflow: hidden;
     position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
   }
   
   button {
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  
+  button:focus {
+    outline: none;
+  }
+  
+  button:focus-visible {
+    outline: 2px solid ${colors.primary};
+    outline-offset: 2px;
   }
   
   .scanButton:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 25px -5px ${colors.primary} !important;
+    box-shadow: 0 20px 35px -8px ${colors.primary} !important;
   }
   
   .logoutButton:hover {
     background-color: ${colors.danger};
-    color: white !important;
+    color: ${colors.white} !important;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px -5px ${colors.danger} !important;
   }
   
   .logoutButton:hover svg {
-    color: white !important;
+    color: ${colors.white} !important;
+  }
+  
+  .scanButton:active, .logoutButton:active {
+    transform: translateY(0);
+  }
+
+  img {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    pointer-events: none;
   }
 `;
 document.head.appendChild(style);
