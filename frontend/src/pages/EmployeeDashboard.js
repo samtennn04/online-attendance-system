@@ -520,8 +520,8 @@ const styles = {
 logoutText: {
   flex: 1,
   textAlign: "center",
-  marginLeft: "50px", // Add this to push text right
-  marginRight: "auto", // Add this for better centering
+  marginLeft: "auto", // Add this to push text right
+  marginRight: "70px", // Add this for better centering
 },
 
   footerNote: {
