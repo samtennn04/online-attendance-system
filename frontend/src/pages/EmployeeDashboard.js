@@ -35,6 +35,7 @@ function EmployeeDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [greeting, setGreeting] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user")) || {};
   const token = localStorage.getItem("token");
@@ -44,6 +45,14 @@ function EmployeeDashboard() {
   useEffect(() => {
     if (!token) navigate("/login");
   }, [token, navigate]);
+
+  // Set mounted state after component mounts
+  useEffect(() => {
+    setIsMounted(true);
+    // Simulate loading completion
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Update time every second
   useEffect(() => {
@@ -58,12 +67,6 @@ function EmployeeDashboard() {
     else if (hour < 17) setGreeting(`Good Afternoon, ${employeeName}`);
     else setGreeting(`Good Evening, ${employeeName}`);
   }, [currentTime, employeeName]);
-
-  // Simulate loading completion
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 1000);
-    return () => clearTimeout(timer);
-  }, []);
 
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to logout?")) {
@@ -90,7 +93,8 @@ function EmployeeDashboard() {
   const dayNumber = currentTime.getDate();
   const year = currentTime.getFullYear();
 
-  if (loading) return (
+  // Show loading only on initial mount
+  if (loading || !isMounted) return (
     <div style={styles.loadingContainer}>
       <div style={styles.loadingSpinner}></div>
     </div>
@@ -107,7 +111,10 @@ function EmployeeDashboard() {
         <img src={logo} alt="Kuensel Logo" style={styles.logo} />
       </div>
       
-      {/* Centered Content */}
+      {/* Bank Name - Added to match your design */}
+      <div style={styles.bankName}>THE PEOPLE'S BANK OF SANTE</div>
+      
+      {/* Perfectly Centered Content */}
       <div style={styles.contentWrapper}>
         <div style={styles.contentCard}>
           {/* Avatar and Greeting */}
@@ -125,48 +132,27 @@ function EmployeeDashboard() {
           <div style={styles.timeCard}>
             <div style={styles.timeCardHeader}>
               <MdAccessTime size={20} color={colors.primary} />
-              <span style={styles.timeCardTitle}>Current Time</span>
+              <span style={styles.timeCardTitle}>CURRENT TIME</span>
             </div>
             
-            <div style={styles.timeCardContent}>
-              <div style={styles.largeTimeDisplay}>
-                <span style={styles.hours}>
-                  {hours.toString().padStart(2, '0')}
-                </span>
-                <span style={styles.separator}>:</span>
-                <span style={styles.minutes}>{minutes}</span>
-                <span style={styles.secondsSeparator}>:</span>
-                <span style={styles.seconds}>{seconds}</span>
-              </div>
-              
-              <div style={styles.ampmDisplay}>
-                {ampm}
-              </div>
+            <div style={styles.timeDisplay}>
+              <span style={styles.timeNumber}>
+                {hours.toString().padStart(2, '0')}:{minutes}:{seconds}
+              </span>
+              <span style={styles.timeAmPm}>{ampm}</span>
             </div>
 
-            <div style={styles.dateDetails}>
-              <div style={styles.dateBox}>
-                <span style={styles.dateDay}>{dayName}</span>
-                <span style={styles.dateFull}>{monthName} {dayNumber}, {year}</span>
-              </div>
-            </div>
-
-            {/* Animated Time Bar */}
-            <div style={styles.timeBar}>
-              <div 
-                style={{
-                  ...styles.timeBarFill,
-                  width: `${(currentTime.getSeconds() / 60) * 100}%`
-                }}
-              ></div>
+            <div style={styles.dateDisplay}>
+              <div style={styles.dateDay}>{dayName}</div>
+              <div style={styles.dateFull}>{monthName} {dayNumber}, {year}</div>
             </div>
           </div>
 
           {/* Scan QR Button */}
           <button onClick={handleScanQR} style={styles.scanButton} className="scanButton">
-            <FaQrcode size={24} />
+            <FaQrcode size={20} />
             <span style={styles.scanButtonText}>Scan QR Code</span>
-            <FaArrowRight size={18} />
+            <FaArrowRight size={16} />
           </button>
 
           {/* Logout Button */}
@@ -193,9 +179,6 @@ const styles = {
     backgroundColor: colors.offWhite,
     overflow: "hidden",
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-    WebkitOverflowScrolling: "touch",
-    msOverflowStyle: "none",
-    scrollbarWidth: "none",
   },
 
   backgroundPattern: {
@@ -203,12 +186,12 @@ const styles = {
     top: 0,
     left: 0,
     right: 0,
-    height: "280px", // Increased height
+    height: "200px",
     background: colors.gradient,
-    borderBottomLeftRadius: "40px", // Larger radius
-    borderBottomRightRadius: "40px",
+    borderBottomLeftRadius: "30px",
+    borderBottomRightRadius: "30px",
     zIndex: 0,
-    boxShadow: `0 10px 30px ${colors.primary}80`,
+    boxShadow: `0 4px 20px ${colors.primary}60`,
     pointerEvents: "none",
   },
 
@@ -218,7 +201,7 @@ const styles = {
     left: 0,
     right: 0,
     bottom: 0,
-    background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.15) 0%, transparent 60%)",
+    background: "radial-gradient(circle at 50% 0%, rgba(255,255,255,0.1) 0%, transparent 70%)",
     zIndex: 0,
     pointerEvents: "none",
   },
@@ -229,21 +212,32 @@ const styles = {
     left: "50%",
     transform: "translateX(-50%)",
     zIndex: 10,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
+    textAlign: "center",
     pointerEvents: "none",
   },
 
   logo: {
-    height: "70px",
+    height: "50px",
     width: "auto",
-    maxWidth: "250px",
     objectFit: "contain",
-    filter: `drop-shadow(0 4px 12px rgba(0,0,0,0.2))`,
+    filter: `drop-shadow(0 4px 8px rgba(0,0,0,0.2))`,
     userSelect: "none",
-    WebkitUserSelect: "none",
-    MsUserSelect: "none",
+    pointerEvents: "none",
+  },
+
+  bankName: {
+    position: "fixed",
+    top: "75px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    color: colors.white,
+    fontSize: "14px",
+    fontWeight: "500",
+    letterSpacing: "1px",
+    textAlign: "center",
+    width: "100%",
+    zIndex: 10,
+    textShadow: `0 2px 4px ${colors.primary}40`,
     pointerEvents: "none",
   },
 
@@ -258,69 +252,61 @@ const styles = {
     justifyContent: "center",
     background: colors.gradient,
     zIndex: 100,
-    overflow: "hidden",
   },
 
   loadingSpinner: {
-    width: "48px",
-    height: "48px",
-    border: `4px solid ${colors.primary}40`,
-    borderTop: `4px solid ${colors.white}`,
+    width: "40px",
+    height: "40px",
+    border: `3px solid ${colors.white}40`,
+    borderTop: `3px solid ${colors.white}`,
     borderRadius: "50%",
     animation: "spin 1s linear infinite",
   },
 
   contentWrapper: {
     position: "absolute",
-    top: 0,
+    top: "120px", // Start below logo and bank name
     left: 0,
     right: 0,
     bottom: 0,
     display: "flex",
     justifyContent: "center",
-    alignItems: "center",
     overflow: "hidden",
     zIndex: 1,
     pointerEvents: "none",
-    paddingTop: "40px", // Add space for logo
   },
 
   contentCard: {
     width: "90%",
-    maxWidth: "420px",
-    backgroundColor: "transparent",
+    maxWidth: "380px",
     display: "flex",
     flexDirection: "column",
+    gap: "16px",
     pointerEvents: "auto",
-    margin: "0 auto",
-    transform: "translateY(-10px)", // Fine-tune vertical position
   },
 
   greetingSection: {
     display: "flex",
     alignItems: "center",
-    gap: "16px",
-    marginBottom: "24px",
-    flexShrink: 0,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    gap: "12px",
+    backgroundColor: "rgba(255,255,255,0.2)",
     padding: "12px 16px",
-    borderRadius: "60px",
+    borderRadius: "12px",
     backdropFilter: "blur(10px)",
-    border: `1px solid ${colors.primary}40`,
-    WebkitBackdropFilter: "blur(10px)",
-    boxShadow: `0 4px 15px rgba(0,0,0,0.1)`,
+    border: `1px solid rgba(255,255,255,0.1)`,
+    boxShadow: `0 4px 10px rgba(0,0,0,0.1)`,
   },
 
   avatarContainer: {
-    width: "70px",
-    height: "70px",
+    width: "60px",
+    height: "60px",
     borderRadius: "50%",
     background: colors.gradient,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    border: `3px solid ${colors.white}`,
-    boxShadow: `0 8px 20px ${colors.primary}80`,
+    border: `2px solid ${colors.white}`,
+    boxShadow: `0 4px 10px ${colors.primary}60`,
     flexShrink: 0,
   },
 
@@ -329,168 +315,95 @@ const styles = {
   },
 
   greeting: {
-    fontSize: "18px",
+    fontSize: "16px",
     color: colors.white,
     marginBottom: "4px",
-    fontWeight: "600",
-    lineHeight: "1.3",
-    textShadow: `0 2px 4px ${colors.primary}40`,
+    fontWeight: "500",
     margin: 0,
+    textShadow: `0 2px 4px rgba(0,0,0,0.2)`,
   },
 
   employeeId: {
     fontSize: "12px",
     color: "rgba(255,255,255,0.8)",
-    fontWeight: "500",
+    fontWeight: "400",
     margin: 0,
   },
 
   timeCard: {
     backgroundColor: colors.white,
-    borderRadius: "28px",
-    padding: "28px", // Increased padding
-    marginBottom: "20px",
-    boxShadow: `0 20px 35px -8px ${colors.primary}40`,
-    border: `1px solid ${colors.primary}20`,
-    flexShrink: 0,
+    borderRadius: "16px",
+    padding: "20px",
+    boxShadow: `0 10px 25px -5px ${colors.primary}30`,
+    border: `1px solid ${colors.primary}10`,
   },
 
   timeCardHeader: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
-    marginBottom: "16px",
+    gap: "6px",
+    marginBottom: "12px",
   },
 
   timeCardTitle: {
-    fontSize: "14px",
+    fontSize: "12px",
     fontWeight: "600",
     color: colors.primary,
-    textTransform: "uppercase",
     letterSpacing: "0.5px",
   },
 
-  timeCardContent: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: "16px",
-  },
-
-  largeTimeDisplay: {
+  timeDisplay: {
     display: "flex",
     alignItems: "baseline",
+    justifyContent: "space-between",
+    marginBottom: "12px",
   },
 
-  hours: {
-    fontSize: "52px",
+  timeNumber: {
+    fontSize: "36px",
     fontWeight: "700",
-    color: colors.primary,
-    lineHeight: 1,
-    letterSpacing: "-1px",
-  },
-
-  minutes: {
-    fontSize: "52px",
-    fontWeight: "700",
-    color: colors.primary,
-    lineHeight: 1,
-    letterSpacing: "-1px",
-  },
-
-  seconds: {
-    fontSize: "32px",
-    fontWeight: "600",
-    color: colors.secondary,
-    lineHeight: 1,
-  },
-
-  separator: {
-    fontSize: "52px",
-    fontWeight: "700",
-    color: colors.primary,
-    lineHeight: 1,
-    margin: "0 2px",
-  },
-
-  secondsSeparator: {
-    fontSize: "32px",
-    fontWeight: "600",
-    color: colors.secondary,
-    lineHeight: 1,
-    margin: "0 2px",
-  },
-
-  ampmDisplay: {
-    fontSize: "20px",
-    fontWeight: "600",
     color: colors.dark,
-    backgroundColor: colors.offWhite,
-    padding: "8px 16px",
-    borderRadius: "40px",
-    border: `1px solid ${colors.light}`,
-    minWidth: "70px",
-    textAlign: "center",
+    fontFamily: "monospace",
   },
 
-  dateDetails: {
-    marginBottom: "20px",
+  timeAmPm: {
+    fontSize: "16px",
+    fontWeight: "500",
+    color: colors.gray,
   },
 
-  dateBox: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
+  dateDisplay: {
+    borderTop: `1px solid ${colors.light}`,
+    paddingTop: "12px",
   },
 
   dateDay: {
-    fontSize: "18px",
+    fontSize: "16px",
     fontWeight: "600",
     color: colors.dark,
-    margin: 0,
+    marginBottom: "2px",
   },
 
   dateFull: {
-    fontSize: "15px",
+    fontSize: "14px",
     color: colors.gray,
-    margin: 0,
-  },
-
-  timeBar: {
-    width: "100%",
-    height: "8px",
-    backgroundColor: colors.light,
-    borderRadius: "4px",
-    overflow: "hidden",
-  },
-
-  timeBarFill: {
-    height: "100%",
-    backgroundColor: colors.primary,
-    borderRadius: "4px",
-    transition: "width 1s linear",
   },
 
   scanButton: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
     gap: "12px",
-    padding: "16px 20px",
+    padding: "14px 20px",
     background: colors.gradient,
     border: "none",
-    borderRadius: "60px",
+    borderRadius: "12px",
     color: colors.white,
-    fontSize: "18px",
-    fontWeight: "600",
+    fontSize: "16px",
+    fontWeight: "500",
     cursor: "pointer",
-    boxShadow: `0 15px 30px -8px ${colors.primary}80`,
-    marginBottom: "12px",
-    width: "100%",
-    flexShrink: 0,
+    boxShadow: `0 8px 20px -5px ${colors.primary}60`,
     transition: "all 0.2s ease",
-    WebkitTapHighlightColor: "transparent",
-    outline: "none",
+    width: "100%",
   },
 
   scanButtonText: {
@@ -503,22 +416,16 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     gap: "12px",
-    padding: "16px 20px",
+    padding: "14px 20px",
     background: colors.white,
-    border: `2px solid ${colors.danger}`,
-    borderRadius: "60px",
+    border: `1px solid ${colors.danger}`,
+    borderRadius: "12px",
     color: colors.danger,
-    fontSize: "18px",
-    fontWeight: "600",
+    fontSize: "16px",
+    fontWeight: "500",
     cursor: "pointer",
-    marginTop: "8px", // Reduced from 12px
-    marginBottom: "10px",
-    width: "100%",
-    flexShrink: 0,
     transition: "all 0.2s ease",
-    boxShadow: `0 4px 10px ${colors.danger}20`,
-    WebkitTapHighlightColor: "transparent",
-    outline: "none",
+    width: "100%",
   },
 
   logoutText: {
@@ -530,9 +437,7 @@ const styles = {
     textAlign: "center",
     fontSize: "12px",
     color: colors.gray,
-    marginTop: "15px",
-    padding: "10px 0",
-    borderTop: `1px solid ${colors.light}`,
+    marginTop: "8px",
   },
 };
 
@@ -545,106 +450,40 @@ style.textContent = `
   }
   
   * {
-    -webkit-overflow-scrolling: touch;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
     margin: 0;
     padding: 0;
     box-sizing: border-box;
   }
   
-  *::-webkit-scrollbar {
-    display: none;
-  }
-  
-  html, body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
+  html, body, #root {
     height: 100%;
     width: 100%;
+    overflow: hidden;
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    -webkit-overflow-scrolling: touch;
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-    touch-action: none;
-  }
-
-  body {
-    overflow: hidden;
-    position: fixed;
-    width: 100%;
-    height: 100%;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-  }
-
-  #root {
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
   }
   
   button {
     cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -khtml-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-  }
-  
-  button:focus {
-    outline: none;
-  }
-  
-  button:focus-visible {
-    outline: 2px solid ${colors.primary};
-    outline-offset: 2px;
   }
   
   .scanButton:hover {
     transform: translateY(-2px);
-    box-shadow: 0 20px 35px -8px ${colors.primary} !important;
+    box-shadow: 0 12px 25px -5px ${colors.primary} !important;
   }
   
   .logoutButton:hover {
     background-color: ${colors.danger};
-    color: ${colors.white} !important;
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px -5px ${colors.danger} !important;
+    color: white !important;
   }
   
   .logoutButton:hover svg {
-    color: ${colors.white} !important;
-  }
-  
-  .scanButton:active, .logoutButton:active {
-    transform: translateY(0);
-  }
-
-  img {
-    -webkit-user-drag: none;
-    -khtml-user-drag: none;
-    -moz-user-drag: none;
-    -o-user-drag: none;
-    user-drag: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    pointer-events: none;
+    color: white !important;
   }
 `;
 document.head.appendChild(style);
