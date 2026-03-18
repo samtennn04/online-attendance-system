@@ -521,7 +521,7 @@ logoutText: {
   flex: 1,
   textAlign: "center",
   marginLeft: "auto", // Add this to push text right
-  marginRight: "70px", // Add this for better centering
+  marginRight: "60px", // Add this for better centering
 },
 
   footerNote: {
