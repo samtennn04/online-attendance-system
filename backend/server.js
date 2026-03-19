@@ -1086,8 +1086,8 @@ app.get("/admin/stats", verifyAdmin, async (req, res) => {
 
 /* ---------------- AUTOMATIC END OF DAY SCHEDULER ---------------- */
 
-// Schedule end of day report at 11:59 PM every day
-cron.schedule('59 23 * * *', () => {
+// Schedule end of day report at 1 Am every day
+cron.schedule('0 1 * * *', () => {
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
   
   console.log('🕛 Running automatic end of day attendance marking for', yesterday);
