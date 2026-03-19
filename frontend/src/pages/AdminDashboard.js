@@ -238,38 +238,40 @@ const AdminDashboard = () => {
   }, [navigate]);
 
   // ========== FETCH ATTENDANCE ==========
-  const fetchAttendance = useCallback(async (year, month) => {
-    const token = localStorage.getItem("adminToken");
-    if (!token) return [];
+const fetchAttendance = useCallback(async (year, month) => {
+  const token = localStorage.getItem("adminToken");
+  if (!token) return [];
 
-    try {
-      console.log(`📡 Fetching attendance for ${year}-${month}...`);
+  try {
+    console.log(`📡 Fetching COMPLETE attendance for ${year}-${month}...`);
+    
+    // Use the new complete attendance endpoint
+    const response = await api.get(`/admin/attendance/complete/${year}/${month}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    
+    console.log("✅ API Response received");
+    
+    if (response.data.success) {
+      console.log(`✅ Fetched ${response.data.records?.length || 0} records`);
+      console.log(`📊 Absent records in this month: ${response.data.summary?.absent || 0}`);
       
-      const response = await api.get(`/admin/attendance/monthly/${year}/${month}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      console.log("✅ API Response received");
-      console.log("📊 Full response data:", response.data);
-      console.log("📊 Attendance data:", response.data.attendance);
-      
-      if (response.data.success) {
-        console.log(`✅ Fetched ${response.data.attendance?.length || 0} records`);
+      if (response.data.records && response.data.records.length > 0) {
+        console.log("📋 First record:", response.data.records[0]);
         
-        if (response.data.attendance && response.data.attendance.length > 0) {
-          console.log("📋 First record:", response.data.attendance[0]);
-          console.log("⏰ First record clock_in:", response.data.attendance[0].clock_in);
-          console.log("⏰ First record clock_in type:", typeof response.data.attendance[0].clock_in);
-        }
-        
-        return response.data.attendance || [];
+        // Log some stats about absent records
+        const absentRecords = response.data.records.filter(r => r.status === "absent");
+        console.log(`📊 Absent records sample:`, absentRecords.slice(0, 3));
       }
-      return [];
-    } catch (err) {
-      console.error("❌ Error fetching attendance:", err);
-      return [];
+      
+      return response.data.records || [];
     }
-  }, []);
+    return [];
+  } catch (err) {
+    console.error("❌ Error fetching attendance:", err);
+    return [];
+  }
+}, []);
 
   // ========== FETCH ALL DATA ==========
   const loadData = useCallback(async () => {
@@ -332,126 +334,115 @@ const AdminDashboard = () => {
     };
   }, []);
 
-// ========== GENERATE COMPLETE ATTENDANCE ==========
-const generateCompleteAttendance = useCallback(() => {
-  console.log("🔄 Generating complete attendance...");
-  console.log("👥 Employees count:", employees.length);
-  console.log("📊 Raw attendance count:", attendance.length);
-  console.log("📊 Raw attendance data:", attendance);
-  
-  if (!employees.length) {
-    console.log("⚠️ No employees to generate attendance for");
-    return [];
-  }
-
-  const year = selectedMonth.getFullYear();
-  const month = selectedMonth.getMonth() + 1;
-  
-  console.log(`📅 Selected month: ${year}-${month}`);
-  
-  const daysInMonth = new Date(year, month, 0).getDate();
-  console.log(`📅 Days in month: ${daysInMonth}`);
-  
-  const completeRecords = [];
-
-  // Create a map of existing attendance records
-  const attendanceMap = new Map();
-  attendance.forEach(record => {
-    const key = `${record.employee_id}-${record.date}`;
-    if (!attendanceMap.has(key)) {
-      attendanceMap.set(key, []);
-    }
-    attendanceMap.get(key).push(record);
-  });
-  
-  console.log("🗺️ Created attendance map with keys:", Array.from(attendanceMap.keys()));
-
-  employees.forEach(employee => {
-    const registrationDate = employee.created_at ? new Date(employee.created_at) : new Date();
-    registrationDate.setHours(0, 0, 0, 0);
+  // ========== GENERATE COMPLETE ATTENDANCE ==========
+  const generateCompleteAttendance = useCallback(() => {
+    console.log("🔄 Generating complete attendance...");
+    console.log("👥 Employees count:", employees.length);
+    console.log("📊 Raw attendance count:", attendance.length);
+    console.log("📊 Raw attendance data:", attendance);
     
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const currentDate = new Date(dateStr);
-      currentDate.setHours(0, 0, 0, 0);
-      
-      // Skip dates before registration
-      if (currentDate < registrationDate) continue;
-      
-      const dayRecords = attendanceMap.get(`${employee.id}-${dateStr}`) || [];
-
-      if (dayRecords.length > 0) {
-        // We have records for this day
-        let earliestClockIn = null;
-        let latestClockOut = null;
-        let location = null;
-        let actualClockIn = null;
-        let actualClockOut = null;
-        
-        dayRecords.forEach(record => {
-          if (record.clock_in) {
-            if (!earliestClockIn || record.clock_in < earliestClockIn) {
-              earliestClockIn = record.clock_in;
-              actualClockIn = record.clock_in;
-            }
-          }
-          if (record.clock_out) {
-            if (!latestClockOut || record.clock_out > latestClockOut) {
-              latestClockOut = record.clock_out;
-              actualClockOut = record.clock_out;
-            }
-          }
-          if (record.location_name && !location) {
-            location = record.location_name;
-          }
-        });
-        
-        let status = "absent";
-        if (earliestClockIn && latestClockOut) {
-          status = "present";
-        } else if (earliestClockIn || latestClockOut) {
-          status = "partial";
-        }
-        
-        completeRecords.push({
-          employee_id: employee.id,
-          username: employee.username,
-          employee_email: employee.email,
-          date: dateStr,
-          clock_in: actualClockIn || earliestClockIn,
-          clock_out: actualClockOut || latestClockOut,
-          location_name: location || "Unknown",
-          status: status,
-          scan_count: dayRecords.length
-        });
-      } else {
-        // NO RECORDS FOR THIS DAY - CREATE ABSENT RECORD
-        completeRecords.push({
-          employee_id: employee.id,
-          username: employee.username,
-          employee_email: employee.email,
-          date: dateStr,
-          clock_in: null,
-          clock_out: null,
-          location_name: "—",
-          status: "absent",  // Mark as absent
-          scan_count: 0
-        });
-      }
+    if (!employees.length) {
+      console.log("⚠️ No employees to generate attendance for");
+      return [];
     }
-  });
 
-  console.log(`✅ Generated ${completeRecords.length} complete records (including absent)`);
-  console.log("📋 First 3 records:", completeRecords.slice(0, 3));
-  
-  // Sort by date (newest first) and employee name
-  return completeRecords.sort((a, b) => {
-    if (a.date < b.date) return 1;
-    if (a.date > b.date) return -1;
-    return a.username.localeCompare(b.username);
-  });
-  
-}, [employees, attendance, selectedMonth]);
+    const year = selectedMonth.getFullYear();
+    const month = selectedMonth.getMonth() + 1;
+    
+    console.log(`📅 Selected month: ${year}-${month}`);
+    
+    const daysInMonth = new Date(year, month, 0).getDate();
+    console.log(`📅 Days in month: ${daysInMonth}`);
+    
+    const completeRecords = [];
+
+    // Create a map of existing attendance records
+    const attendanceMap = new Map();
+    attendance.forEach(record => {
+      const key = `${record.employee_id}-${record.date}`;
+      if (!attendanceMap.has(key)) {
+        attendanceMap.set(key, []);
+      }
+      attendanceMap.get(key).push(record);
+    });
+    
+    console.log("🗺️ Created attendance map with keys:", Array.from(attendanceMap.keys()));
+
+    employees.forEach(employee => {
+      const registrationDate = employee.created_at ? new Date(employee.created_at) : new Date();
+      registrationDate.setHours(0, 0, 0, 0);
+      
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const currentDate = new Date(dateStr);
+        currentDate.setHours(0, 0, 0, 0);
+        
+        // Skip dates before registration
+        if (currentDate < registrationDate) continue;
+        
+        const dayRecords = attendanceMap.get(`${employee.id}-${dateStr}`) || [];
+
+        if (dayRecords.length > 0) {
+          // We have records for this day
+          let earliestClockIn = null;
+          let latestClockOut = null;
+          let location = null;
+          // Store the actual time values from the first record
+          let actualClockIn = null;
+          let actualClockOut = null;
+          
+          dayRecords.forEach(record => {
+            if (record.clock_in) {
+              if (!earliestClockIn || record.clock_in < earliestClockIn) {
+                earliestClockIn = record.clock_in;
+                actualClockIn = record.clock_in; // Keep the exact value
+              }
+            }
+            if (record.clock_out) {
+              if (!latestClockOut || record.clock_out > latestClockOut) {
+                latestClockOut = record.clock_out;
+                actualClockOut = record.clock_out; // Keep the exact value
+              }
+            }
+            if (record.location_name && !location) {
+              location = record.location_name;
+            }
+          });
+          
+          let status = "absent";
+          if (earliestClockIn && latestClockOut) {
+            status = "present";
+          } else if (earliestClockIn || latestClockOut) {
+            status = "partial";
+          }
+          
+          completeRecords.push({
+            employee_id: employee.id,
+            username: employee.username,
+            employee_email: employee.email,
+            date: dateStr,
+            clock_in: actualClockIn || earliestClockIn, // Use the actual value
+            clock_out: actualClockOut || latestClockOut, // Use the actual value
+            location_name: location || "Unknown",
+            status: status,
+            scan_count: dayRecords.length
+          });
+        }
+        // Don't add absent records for dates without attendance
+      }
+    });
+
+    console.log(`✅ Generated ${completeRecords.length} complete records`);
+    console.log("📋 First 3 records:", completeRecords.slice(0, 3));
+    
+    // Sort by date (newest first) and employee name
+    return completeRecords.sort((a, b) => {
+      if (a.date < b.date) return 1;
+      if (a.date > b.date) return -1;
+      return a.username.localeCompare(b.username);
+    });
+    
+  }, [employees, attendance, selectedMonth]);
 
   // ========== MEMOIZED VALUES ==========
   const completeAttendanceData = useMemo(() => {
