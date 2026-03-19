@@ -1,41 +1,162 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Web site created using create-react-app" />
-    <title>Your App Title</title>
-    
-    <!-- Add this style block to prevent body scrolling -->
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        height: 100%;
-        width: 100%;
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-      }
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>Secure Employee Auth · Responsive</title>
+  <!-- Tailwind via CDN + Inter font (same as snippet) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet">
+  <style>
+    /* ensure body uses Inter, consistent background */
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f3f4f6; /* neutral-100 */
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    /* fixed decorative layers – exactly as described, but responsive never hides them */
+    .gradient-layer {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(135deg, rgb(0, 99, 137) 0%, rgb(0, 160, 209) 100%);
+      z-index: 0;
+    }
+    .radial-layer {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
+      z-index: 1;
+      pointer-events: none;
+    }
+    /* floating card will be relative, above layers */
+    .card-container {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      max-width: 28rem;  /* md:max-w-md */
+      margin: 1rem;
+      padding: 0 0.5rem;
+    }
+    /* simulate the "fixed top-30 transform -translate-y-50" effect but keep responsive */
+    .floating-head {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      transition: transform 0.2s;
+    }
+    /* custom style for the dashed console lines (optional aesthetic) */
+    .console-mimic {
+      font-family: 'Menlo', 'Courier New', monospace;
+      background: rgba(0,0,0,0.02);
+      border-radius: 0.75rem;
+      padding: 0.75rem 1rem;
+      border: 1px dashed #9ca3af;
+      color: #1f2937;
+      font-size: 0.75rem;
+      margin-top: 2rem;
+      backdrop-filter: blur(2px);
+    }
+  </style>
+</head>
+<body>
+  <!-- fixed background layers (exactly from description) -->
+  <div class="gradient-layer" style="background: linear-gradient(135deg, rgb(0, 99, 137) 0%, rgb(0, 170, 209) 100%);"></div>
+  <div class="radial-layer" style="background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.18) 0%, transparent 65%);"></div>
+  
+  <!-- optional floating element from snippet: "top:30px; transform:translateY(-50px)" 
+       but we make it subtle and responsive: hidden on very small, visible sm -->
+  <div class="fixed top-[30px] left-1/2 -translate-x-1/2 text-white/30 text-xs sm:text-sm hidden sm:block pointer-events-none z-20 whitespace-nowrap" style="transform: translateY(-50px);">
+    ⚙️ head &gt; &lt;/head • body • fixed gradient
+  </div>
 
-      #root {
-        height: 100%;
-        width: 100%;
-        overflow: hidden;
-        position: fixed;
+  <!-- main card – responsive for every phone -->
+  <div class="card-container">
+    <div class="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 sm:p-8 border border-white/30">
+      
+      <!-- Welcome header -->
+      <div class="floating-head">
+        <h1 class="text-3xl sm:text-4xl font-light text-gray-800 tracking-tight">Welcome</h1>
+        <div class="h-1 w-16 bg-cyan-700 mx-auto mt-2 rounded-full"></div>
+      </div>
+
+      <!-- email field -->
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+        <input type="email" placeholder="e.g. employee@company.com" 
+               class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-600 focus:border-transparent outline-none transition bg-white/80 text-gray-800 text-base">
+      </div>
+
+      <!-- password field -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input type="password" placeholder="··········" 
+               class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-cyan-600 focus:border-transparent outline-none transition bg-white/80 text-gray-800 text-base">
+      </div>
+
+      <!-- Sign In button (exactly as text) -->
+      <button class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-semibold py-3.5 rounded-lg shadow-md transition active:scale-[0.99] text-lg tracking-wide">
+        Sign In
+      </button>
+
+      <!-- create account + secure auth line (identical to description) -->
+      <div class="flex flex-wrap items-center justify-center gap-x-2 gap-y-2 mt-6 text-sm sm:text-base">
+        <span class="text-gray-600">New employee?</span>
+        <a href="#" class="font-semibold text-cyan-700 hover:text-cyan-800 underline underline-offset-2 decoration-cyan-300">
+          Create Account
+        </a>
+      </div>
+
+      <!-- Secure Employee Authentication (exact text) -->
+      <div class="relative flex py-4 items-center">
+        <div class="flex-grow border-t border-gray-300"></div>
+        <span class="flex-shrink mx-3 text-xs text-gray-500 font-medium tracking-wide">Secure Employee Authentication</span>
+        <div class="flex-grow border-t border-gray-300"></div>
+      </div>
+
+      <!-- console output block – responsive and matches given markup (with style tweak) -->
+      <div class="console-mimic text-[0.7rem] sm:text-xs overflow-x-auto">
+        <span class="text-gray-600">&gt; </span><span class="text-gray-800 font-semibold">head</span> &gt; <span class="text-gray-500">&lt;/head&gt;</span><br>
+        <span class="text-gray-600">&gt; </span><span class="text-gray-800 font-semibold">body</span><br>
+        <span class="text-gray-600">&lt;!-- fixed layers present --&gt;</span><br>
+        <span class="text-gray-500">&lt;div</span> <span class="text-purple-700">style=</span><span class="text-green-700">"position: fixed; inset:0; background: linear-gradient(135deg, #006389, #00a8d1); z-index:0;"</span><span class="text-gray-500">&gt;</span> {flex...} <span class="text-gray-500">&lt;/div&gt;</span><br>
+        <span class="text-gray-500">&lt;div</span> <span class="text-purple-700">style=</span><span class="text-green-700">"radial white transparent; z-index:1"</span><span class="text-gray-500">&gt;&lt;/div&gt;</span><br>
+        <span class="text-gray-600">body div#root div div</span>
+      </div>
+
+      <!-- micro hint: Styles / Computed / etc (like the snippet's bottom panel) -->
+      <div class="flex flex-wrap gap-2 justify-end text-[0.6rem] text-gray-400 mt-3 border-t border-gray-200 pt-3">
+        <span class="px-2 py-1 bg-gray-100 rounded">Styles</span>
+        <span class="px-2 py-1 bg-gray-100 rounded">Computed</span>
+        <span class="px-2 py-1 bg-gray-100 rounded">Layout</span>
+        <span class="px-2 py-1 bg-gray-100 rounded">Event Listeners</span>
+        <span class="px-2 py-1 bg-gray-100 rounded">DOM Breakpoints</span>
+        <span class="px-2 py-1 bg-gray-100 rounded">Filter</span>
+        <span class="px-2 py-1 bg-gray-200 rounded font-mono">.cls +</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- extra small responsive test: if screen ≤ 360px we slightly reduce padding (already safe) -->
+  <!-- also keep the 'fixed top-30 transform' element for larger phones only but we have it hidden on small -->
+  
+  <!-- ensure that on the tiniest phone (320px) everything stays inside -->
+  <style>
+    @media (max-width: 380px) {
+      .card-container {
+        margin: 0.5rem;
       }
-    </style>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-  </body>
+      .console-mimic {
+        font-size: 0.65rem;
+        padding: 0.5rem;
+      }
+      h1 {
+        font-size: 2rem;
+      }
+    }
+  </style>
+</body>
 </html>
