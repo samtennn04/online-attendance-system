@@ -666,7 +666,9 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
 
 /* ---------------- MONTHLY ATTENDANCE - FORCE RAW TIME ---------------- */
 
-app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) => {
+/* ---------------- COMPLETE ATTENDANCE WITH ABSENT RECORDS FROM REGISTRATION ---------------- */
+
+app.get("/admin/attendance/complete/:year/:month", verifyAdmin, async (req, res) => {
   const { year, month } = req.params;
   
   const yearNum = parseInt(year);
@@ -679,21 +681,27 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
     });
   }
 
-  console.log(`📅 Fetching monthly attendance for ${year}-${month}`);
+  console.log(`📅 Generating COMPLETE attendance for ${year}-${month} with absent records from registration date`);
 
   try {
-    // First get all employees with their registration dates
+    // Get all employees with their registration dates
     const employees = await pool.query(
-      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
+      `SELECT id, username, email, 
+          TO_CHAR(created_at, 'YYYY-MM-DD') as registration_date,
+          created_at as registration_timestamp
+       FROM users 
+       ORDER BY username`
     );
 
-    // Get attendance records - FORCE RAW TIME by extracting components
+    // Calculate days in month
+    const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
+    const startOfMonth = `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
+    const endOfMonth = `${yearNum}-${String(monthNum).padStart(2, '0')}-${daysInMonth}`;
+
+    // Get all attendance records for the month
     const attendanceRecords = await pool.query(
       `SELECT 
-          a.id,
           a.employee_id,
-          u.username,
-          u.email as employee_email,
           TO_CHAR(a.date, 'YYYY-MM-DD') as date,
           LPAD(EXTRACT(HOUR FROM a.clock_in)::text, 2, '0') || ':' || 
           LPAD(EXTRACT(MINUTE FROM a.clock_in)::text, 2, '0') || ':' || 
@@ -703,35 +711,133 @@ app.get("/admin/attendance/monthly/:year/:month", verifyAdmin, async (req, res) 
           LPAD(EXTRACT(SECOND FROM a.clock_out)::text, 2, '0') as clock_out,
           a.location_name,
           a.status,
-          a.is_absent,
-          a.created_at as record_created_at
+          a.is_absent
         FROM attendance a
-        JOIN users u ON a.employee_id = u.id
-        WHERE EXTRACT(YEAR FROM a.date) = $1 AND EXTRACT(MONTH FROM a.date) = $2
-        ORDER BY a.date DESC, a.created_at DESC`,
+        WHERE EXTRACT(YEAR FROM a.date) = $1 
+          AND EXTRACT(MONTH FROM a.date) = $2
+        ORDER BY a.date DESC`,
       [yearNum, monthNum]
     );
+
+    // Create a map for quick lookup
+    const attendanceMap = new Map();
+    attendanceRecords.rows.forEach(record => {
+      const key = `${record.employee_id}-${record.date}`;
+      if (!attendanceMap.has(key)) {
+        attendanceMap.set(key, []);
+      }
+      attendanceMap.get(key).push(record);
+    });
+
+    // Generate complete records for each employee
+    const completeRecords = [];
+    const today = new Date().toISOString().split('T')[0];
+
+    employees.rows.forEach(employee => {
+      const registrationDate = employee.registration_date;
+      
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        
+        // Skip dates before employee registration
+        if (dateStr < registrationDate) {
+          continue;
+        }
+
+        // Skip future dates
+        if (dateStr > today) {
+          continue;
+        }
+
+        const dayRecords = attendanceMap.get(`${employee.id}-${dateStr}`) || [];
+
+        if (dayRecords.length > 0) {
+          // Process existing records
+          let earliestClockIn = null;
+          let latestClockOut = null;
+          let location = null;
+          let isAbsent = false;
+
+          dayRecords.forEach(record => {
+            if (record.clock_in && (!earliestClockIn || record.clock_in < earliestClockIn)) {
+              earliestClockIn = record.clock_in;
+            }
+            if (record.clock_out && (!latestClockOut || record.clock_out > latestClockOut)) {
+              latestClockOut = record.clock_out;
+            }
+            if (record.location_name && record.location_name !== "—" && !location) {
+              location = record.location_name;
+            }
+            if (record.is_absent) {
+              isAbsent = true;
+            }
+          });
+
+          let status = "present";
+          if (isAbsent) {
+            status = "absent";
+          } else if (earliestClockIn && latestClockOut) {
+            status = "present";
+          } else if (earliestClockIn || latestClockOut) {
+            status = "partial";
+          }
+
+          completeRecords.push({
+            employee_id: employee.id,
+            username: employee.username,
+            employee_email: employee.email,
+            date: dateStr,
+            clock_in: earliestClockIn,
+            clock_out: latestClockOut,
+            location_name: location || "—",
+            status: status,
+            registration_date: registrationDate,
+            is_absent: isAbsent,
+            record_count: dayRecords.length
+          });
+        } else {
+          // No records - mark as absent
+          completeRecords.push({
+            employee_id: employee.id,
+            username: employee.username,
+            employee_email: employee.email,
+            date: dateStr,
+            clock_in: null,
+            clock_out: null,
+            location_name: "—",
+            status: "absent",
+            registration_date: registrationDate,
+            is_absent: true,
+            record_count: 0
+          });
+        }
+      }
+    });
+
+    console.log(`✅ Generated ${completeRecords.length} complete records for ${year}-${month}`);
     
-    console.log(`✅ Found ${attendanceRecords.rows.length} attendance records for ${year}-${month}`);
-    
-    // Log the first record's clock_in to verify
-    if (attendanceRecords.rows.length > 0) {
-      console.log("⏰ First record clock_in from DB:", attendanceRecords.rows[0].clock_in);
-    }
-    
+    // Count absent records
+    const absentCount = completeRecords.filter(r => r.status === "absent").length;
+    console.log(`📊 Absent records: ${absentCount}`);
+
     res.json({
       success: true,
       year: yearNum,
       month: monthNum,
-      employees: employees.rows,
-      attendance: attendanceRecords.rows,
-      total_records: attendanceRecords.rows.length
+      records: completeRecords,
+      summary: {
+        total: completeRecords.length,
+        absent: absentCount,
+        present: completeRecords.filter(r => r.status === "present").length,
+        partial: completeRecords.filter(r => r.status === "partial").length
+      }
     });
+
   } catch (err) {
-    console.error("Error fetching monthly attendance:", err);
+    console.error("Error generating complete attendance:", err);
     res.status(500).json({ 
       success: false, 
-      message: "Error fetching attendance records" 
+      message: "Error generating complete attendance" 
     });
   }
 });
