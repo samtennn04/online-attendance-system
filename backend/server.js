@@ -30,25 +30,120 @@ const JWT_SECRET = process.env.JWT_SECRET || "secretkey";
 
 /* ---------------- POSTGRESQL CONNECTION ---------------- */
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT || 5432,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+// Log which connection method we're using
+console.log('🔍 Checking database configuration...');
+console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+console.log('DB_HOST exists:', !!process.env.DB_HOST);
+
+let poolConfig;
+
+// Always prefer DATABASE_URL if available
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.includes('postgresql://')) {
+  console.log('📡 Using DATABASE_URL for connection');
+  console.log('📡 Database host:', process.env.DATABASE_URL.split('@')[1]?.split('/')[0]);
+  
+  poolConfig = {
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false  // Required for Render PostgreSQL
+    },
+    connectionTimeoutMillis: 10000,
+    max: 20,
+    idleTimeoutMillis: 30000,
+  };
+} else if (process.env.DB_HOST) {
+  let fullHost = process.env.DB_HOST;
+  
+  if (!fullHost.includes('.render.com') && !fullHost.includes('.')) {
+    console.log('⚠️  DB_HOST appears to be incomplete, adding domain...');
+    fullHost = `${fullHost}.singapore-postgres.render.com`;
+    console.log('📡 Using full host:', fullHost);
+  }
+  
+  console.log('📡 Using individual database parameters');
+  console.log('📡 Host:', fullHost);
+  console.log('📡 Database:', process.env.DB_NAME);
+  console.log('📡 User:', process.env.DB_USER);
+  
+  poolConfig = {
+    host: fullHost,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 5432,
+    ssl: {
+      rejectUnauthorized: false
+    },
+    connectionTimeoutMillis: 10000,
+    max: 20,
+    idleTimeoutMillis: 30000,
+  };
+} else {
+  console.error('❌ No database configuration found!');
+  console.error('   Please set DATABASE_URL or DB_HOST in .env file');
+  process.exit(1);
+}
+
+// Create the pool
+const pool = new Pool(poolConfig);
+
+// Add error handler for the pool
+pool.on('error', (err) => {
+  console.error('❌ Unexpected database pool error:', err);
 });
 
-// Test database connection and create tables
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error('❌ Database connection failed:', err);
-  } else {
+// Test database connection with retry logic
+let connectionAttempts = 0;
+const maxAttempts = 3;
+
+const testConnection = async () => {
+  try {
+    const client = await pool.connect();
     console.log('✅ Connected to PostgreSQL database');
-    release();
-    createTables();
+    
+    // Test query to verify connection
+    const result = await client.query('SELECT NOW() as current_time');
+    console.log('✅ Database time:', result.rows[0].current_time);
+    
+    client.release();
+    await createTables();
+    return true;
+  } catch (err) {
+    connectionAttempts++;
+    console.error(`❌ Database connection failed (attempt ${connectionAttempts}/${maxAttempts}):`);
+    console.error('   Error:', err.message);
+    
+    if (err.code === 'ENOTFOUND') {
+      console.error('   ⚠️  DNS lookup failed. Check if database hostname is correct.');
+      console.error('   Expected format: dpg-xxxxx.singapore-postgres.render.com');
+    } else if (err.code === 'ECONNREFUSED') {
+      console.error('   ⚠️  Connection refused. Database might be paused or firewall blocking.');
+    } else if (err.code === '28P01') {
+      console.error('   ⚠️  Authentication failed. Wrong username or password.');
+      console.error('   💡 Tip: Check your database credentials in Render dashboard');
+    } else if (err.code === 'ETIMEDOUT') {
+      console.error('   ⚠️  Connection timeout. Database might be slow to respond.');
+    }
+    
+    if (connectionAttempts < maxAttempts) {
+      console.log(`   🔄 Retrying in 5 seconds... (${connectionAttempts}/${maxAttempts})`);
+      setTimeout(testConnection, 5000);
+    } else {
+      console.error('   ⚠️  Max connection attempts reached.');
+      console.error('   💡 To fix authentication:');
+      console.error('      1. Go to Render dashboard');
+      console.error('      2. Open your PostgreSQL database');
+      console.error('      3. Go to "Settings" → "Database Credentials"');
+      console.error('      4. Click "Reset Password" to generate new credentials');
+      console.error('      5. Copy the new External Connection String');
+      console.error('      6. Update your .env file with the new DATABASE_URL');
+      console.error('      7. Restart the server');
+    }
   }
-});
+};
+
+// Start the connection test
+testConnection();
 
 // Create tables if they don't exist
 const createTables = async () => {
@@ -90,10 +185,67 @@ const createTables = async () => {
       ON attendance(employee_id, date)
     `);
     console.log('✅ Indexes created');
+    
+    console.log('✅ Database setup complete!');
+    
   } catch (err) {
     console.error('❌ Error creating tables:', err);
   }
 };
+
+/* ---------------- TEST DATABASE CONNECTION ENDPOINT ---------------- */
+
+app.get("/test-db", async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW() as current_time, current_database() as database_name');
+    res.json({
+      success: true,
+      message: "Database connected successfully!",
+      time: result.rows[0].current_time,
+      database: result.rows[0].database_name,
+      status: "Connected"
+    });
+  } catch (err) {
+    console.error("Database test error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+      error: err.message
+    });
+  }
+});
+
+/* ---------------- GET DATABASE STATUS ---------------- */
+
+app.get("/db-status", async (req, res) => {
+  try {
+    const testResult = await pool.query('SELECT 1 as connected');
+    const userCount = await pool.query('SELECT COUNT(*) FROM users');
+    const attendanceCount = await pool.query('SELECT COUNT(*) FROM attendance');
+    
+    res.json({
+      success: true,
+      database: {
+        connected: true,
+        status: "Online",
+        tables: {
+          users: parseInt(userCount.rows[0].count),
+          attendance: parseInt(attendanceCount.rows[0].count)
+        },
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      database: {
+        connected: false,
+        error: err.message,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+});
 
 /* ---------------- REGISTER ---------------- */
 
@@ -126,7 +278,7 @@ app.post("/auth/register", async (req, res) => {
     });
   } catch (err) {
     console.error('Registration error:', err);
-    if (err.code === '23505') { // PostgreSQL duplicate key error
+    if (err.code === '23505') {
       return res.status(400).json({ message: "Email already registered" });
     }
     res.status(500).json({ message: "Registration failed" });
@@ -234,10 +386,7 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
       });
     }
     
-    // Check if there's a record with clock_in but no clock_out
     const hasIncomplete = result.rows.some(r => r.clock_in && !r.clock_out);
-    
-    // Check if there's a completed record (both clock_in and clock_out)
     const hasCompleted = result.rows.some(r => r.clock_in && r.clock_out);
     
     if (hasCompleted) {
@@ -280,25 +429,20 @@ app.get("/attendance/status", verifyToken, async (req, res) => {
   }
 });
 
-// Helper function to get Bhutan time (UTC+6) for recording attendance
+// Helper function to get Bhutan time (UTC+6)
 const getBhutanTime = () => {
   const now = new Date();
-  
-  // Get UTC time components
   const utcHours = now.getUTCHours();
   const utcMinutes = now.getUTCMinutes();
   const utcSeconds = now.getUTCSeconds();
   
-  // Bhutan is UTC+6
   let bhutanHours = utcHours + 6;
   let bhutanMinutes = utcMinutes;
   
-  // Handle overflow to next day
   if (bhutanHours >= 24) {
     bhutanHours -= 24;
   }
   
-  // Format with leading zeros
   const formattedHours = String(bhutanHours).padStart(2, '0');
   const formattedMinutes = String(bhutanMinutes).padStart(2, '0');
   const formattedSeconds = String(utcSeconds).padStart(2, '0');
@@ -310,7 +454,7 @@ const getBhutanTime = () => {
   return bhutanTimeString;
 };
 
-/* ---------------- ATTENDANCE WITH LOCATION FORMATTING ---------------- */
+/* ---------------- ATTENDANCE WITH LOCATION ---------------- */
 
 app.post("/attendance", verifyToken, async (req, res) => {
   const { qrData, latitude, longitude } = req.body;
@@ -373,42 +517,30 @@ app.post("/attendance", verifyToken, async (req, res) => {
   }
 
   const today = new Date().toISOString().split("T")[0];
-  // Use Bhutan time instead of IST
   const time = getBhutanTime();
   
-  console.log(`⏰ Time being stored in database: ${time}`);
-
   console.log("=".repeat(50));
   console.log(`📝 Processing attendance for user ${userId} on ${today} at ${time} Bhutan Time`);
   console.log(`📍 Location: ${location}`);
 
   try {
-    // Check if attendance already exists for today
     const records = await pool.query(
       "SELECT * FROM attendance WHERE employee_id = $1 AND date = $2 ORDER BY id",
       [userId, today]
     );
 
-    console.log(`📊 Found ${records.rows.length} records for today`);
-
-    // Check if there's already a completed record (both clock_in and clock_out)
     const completedRecord = records.rows.find(r => r.clock_in && r.clock_out);
     
     if (completedRecord) {
-      console.log(`⚠️ Employee ${userId} has already completed attendance for today`);
       return res.status(400).json({ 
         success: false,
         message: "You have already completed your attendance for today"
       });
     }
 
-    // Check if there's an incomplete record (clock_in but no clock_out)
     const incompleteRecord = records.rows.find(r => r.clock_in && !r.clock_out);
 
     if (incompleteRecord) {
-      // This is CLOCK OUT
-      console.log(`✅ Found incomplete record ID ${incompleteRecord.id} - Processing clock out`);
-      
       await pool.query(
         `UPDATE attendance 
          SET clock_out = $1::time, 
@@ -417,8 +549,6 @@ app.post("/attendance", verifyToken, async (req, res) => {
          WHERE id = $3`,
         [time, location, incompleteRecord.id]
       );
-      
-      console.log(`✅ Clock out successful for user ${userId} at ${time} Bhutan Time`);
       
       res.json({ 
         success: true,
@@ -429,9 +559,6 @@ app.post("/attendance", verifyToken, async (req, res) => {
         recordId: incompleteRecord.id
       });
     } else {
-      // No incomplete record found - This is CLOCK IN
-      console.log("✅ No incomplete records found - Creating clock in");
-      
       const result = await pool.query(
         `INSERT INTO attendance 
          (employee_id, date, clock_in, latitude, longitude, location_name, status, is_absent) 
@@ -439,8 +566,6 @@ app.post("/attendance", verifyToken, async (req, res) => {
          RETURNING id`,
         [userId, today, time, latitude, longitude, location]
       );
-      
-      console.log(`✅ Clock in successful for user ${userId} at ${time} Bhutan Time`);
       
       res.json({ 
         success: true,
@@ -462,17 +587,76 @@ app.post("/attendance", verifyToken, async (req, res) => {
 
 /* ---------------- ADMIN LOGIN ---------------- */
 
-app.post("/auth/admin-login", (req, res) => {
-  const { password } = req.body;
-  if (password === "admin123") {
-    const token = jwt.sign(
-      { role: "admin" },
-      JWT_SECRET,
-      { expiresIn: "1d" }
+app.post("/auth/admin-login", async (req, res) => {
+  const { email, password } = req.body;
+  
+  try {
+    const result = await pool.query(
+      "SELECT * FROM users WHERE role = 'admin' AND email = $1",
+      [email]
     );
-    return res.json({ success: true, token });
+    
+    if (result.rows.length > 0) {
+      const admin = result.rows[0];
+      const valid = await bcrypt.compare(password, admin.password);
+      
+      if (valid) {
+        const token = jwt.sign(
+          { id: admin.id, username: admin.username, role: "admin" },
+          JWT_SECRET,
+          { expiresIn: "1d" }
+        );
+        return res.json({ 
+          success: true, 
+          token,
+          user: {
+            id: admin.id,
+            username: admin.username,
+            role: "admin"
+          }
+        });
+      }
+    }
+    
+    if (password === "admin123") {
+      const defaultAdminCheck = await pool.query(
+        "SELECT * FROM users WHERE email = 'admin@attendance.com'"
+      );
+      
+      if (defaultAdminCheck.rows.length === 0) {
+        const hash = await bcrypt.hash("admin123", 10);
+        await pool.query(
+          "INSERT INTO users (username, email, password, role, created_at) VALUES ($1, $2, $3, 'admin', NOW())",
+          ["Admin", "admin@attendance.com", hash]
+        );
+      }
+      
+      const adminUser = await pool.query(
+        "SELECT * FROM users WHERE email = 'admin@attendance.com'"
+      );
+      
+      const token = jwt.sign(
+        { id: adminUser.rows[0].id, username: adminUser.rows[0].username, role: "admin" },
+        JWT_SECRET,
+        { expiresIn: "1d" }
+      );
+      
+      return res.json({ 
+        success: true, 
+        token,
+        user: {
+          id: adminUser.rows[0].id,
+          username: adminUser.rows[0].username,
+          role: "admin"
+        }
+      });
+    }
+    
+    res.status(401).json({ message: "Invalid admin credentials" });
+  } catch (err) {
+    console.error("Admin login error:", err);
+    res.status(500).json({ message: "Login failed" });
   }
-  res.status(401).json({ message: "Wrong password" });
 });
 
 /* ---------------- ADMIN EMPLOYEES ---------------- */
@@ -480,7 +664,7 @@ app.post("/auth/admin-login", (req, res) => {
 app.get("/admin/employees", verifyAdmin, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
+      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users WHERE role != 'admin' ORDER BY username"
     );
     res.json(result.rows);
   } catch (err) {
@@ -489,18 +673,16 @@ app.get("/admin/employees", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- TODAY'S ATTENDANCE - FORCE RAW TIME ---------------- */
+/* ---------------- TODAY'S ATTENDANCE ---------------- */
 
 app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   
   try {
-    // First get all employees
     const employees = await pool.query(
-      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users ORDER BY username"
+      "SELECT id, username, email FROM users WHERE role != 'admin' ORDER BY username"
     );
 
-    // Get today's attendance - FORCE RAW TIME
     const attendance = await pool.query(
       `SELECT 
           a.id,
@@ -535,7 +717,7 @@ app.get("/admin/attendance/today", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- MARK ABSENT EMPLOYEES FUNCTION ---------------- */
+/* ---------------- MARK ABSENT EMPLOYEES ---------------- */
 
 const markAbsentEmployees = async (date) => {
   const today = new Date().toISOString().split('T')[0];
@@ -548,24 +730,19 @@ const markAbsentEmployees = async (date) => {
   console.log(`📝 Marking absent employees for ${date}`);
 
   try {
-    // First, get all employees
-    const employees = await pool.query("SELECT id FROM users");
+    const employees = await pool.query("SELECT id FROM users WHERE role != 'admin'");
     
     if (employees.rows.length === 0) {
       console.log("No employees found");
       return;
     }
 
-    // Then, get all employees who have attendance for this date
     const presentEmployees = await pool.query(
       "SELECT DISTINCT employee_id FROM attendance WHERE date = $1",
       [date]
     );
 
-    // Create a Set of present employee IDs
     const presentSet = new Set(presentEmployees.rows.map(e => e.employee_id));
-
-    // Find absent employees (all employees - present employees)
     const absentEmployees = employees.rows.filter(emp => !presentSet.has(emp.id));
 
     if (absentEmployees.length === 0) {
@@ -575,7 +752,6 @@ const markAbsentEmployees = async (date) => {
 
     console.log(`📊 Found ${absentEmployees.length} absent employees for ${date}`);
 
-    // Insert absent records for each absent employee
     for (const emp of absentEmployees) {
       await pool.query(
         `INSERT INTO attendance 
@@ -595,19 +771,14 @@ const markAbsentEmployees = async (date) => {
 
 app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
   const { date } = req.body;
-  
-  // Use today's date if no date provided
   const targetDate = date || new Date().toISOString().split('T')[0];
   
   console.log("=".repeat(50));
   console.log(`📋 Generating End of Day Report for ${targetDate}`);
-  console.log("=".repeat(50));
 
   try {
-    // First, mark absent employees
     await markAbsentEmployees(targetDate);
 
-    // Then generate the full report
     const results = await pool.query(
       `SELECT 
         u.id as employee_id,
@@ -621,11 +792,11 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
         a.created_at
       FROM users u
       LEFT JOIN attendance a ON u.id = a.employee_id AND a.date = $1
+      WHERE u.role != 'admin'
       ORDER BY u.username`,
       [targetDate]
     );
 
-    // Format the results
     const report = results.rows.map(row => ({
       employee_id: row.employee_id,
       username: row.username,
@@ -638,7 +809,6 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
       is_absent: row.is_absent || false
     }));
 
-    // Calculate stats
     const present = report.filter(r => r.status === "present").length;
     const partial = report.filter(r => r.status === "partial").length;
     const absent = report.filter(r => r.status === "absent").length;
@@ -664,272 +834,15 @@ app.post("/admin/end-of-day", verifyAdmin, async (req, res) => {
   }
 });
 
-/* ---------------- MONTHLY ATTENDANCE - FORCE RAW TIME ---------------- */
-
-/* ---------------- COMPLETE ATTENDANCE WITH ABSENT RECORDS FROM REGISTRATION ---------------- */
-
-app.get("/admin/attendance/complete/:year/:month", verifyAdmin, async (req, res) => {
-  const { year, month } = req.params;
-  
-  const yearNum = parseInt(year);
-  const monthNum = parseInt(month);
-  
-  if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Invalid year or month parameters" 
-    });
-  }
-
-  console.log(`📅 Generating COMPLETE attendance for ${year}-${month} with absent records from registration date`);
-
-  try {
-    // Get all employees with their registration dates
-    const employees = await pool.query(
-      `SELECT id, username, email, 
-          TO_CHAR(created_at, 'YYYY-MM-DD') as registration_date,
-          created_at as registration_timestamp
-       FROM users 
-       ORDER BY username`
-    );
-
-    // Calculate days in month
-    const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
-    const startOfMonth = `${yearNum}-${String(monthNum).padStart(2, '0')}-01`;
-    const endOfMonth = `${yearNum}-${String(monthNum).padStart(2, '0')}-${daysInMonth}`;
-
-    // Get all attendance records for the month
-    const attendanceRecords = await pool.query(
-      `SELECT 
-          a.employee_id,
-          TO_CHAR(a.date, 'YYYY-MM-DD') as date,
-          LPAD(EXTRACT(HOUR FROM a.clock_in)::text, 2, '0') || ':' || 
-          LPAD(EXTRACT(MINUTE FROM a.clock_in)::text, 2, '0') || ':' || 
-          LPAD(EXTRACT(SECOND FROM a.clock_in)::text, 2, '0') as clock_in,
-          LPAD(EXTRACT(HOUR FROM a.clock_out)::text, 2, '0') || ':' || 
-          LPAD(EXTRACT(MINUTE FROM a.clock_out)::text, 2, '0') || ':' || 
-          LPAD(EXTRACT(SECOND FROM a.clock_out)::text, 2, '0') as clock_out,
-          a.location_name,
-          a.status,
-          a.is_absent
-        FROM attendance a
-        WHERE EXTRACT(YEAR FROM a.date) = $1 
-          AND EXTRACT(MONTH FROM a.date) = $2
-        ORDER BY a.date DESC`,
-      [yearNum, monthNum]
-    );
-
-    // Create a map for quick lookup
-    const attendanceMap = new Map();
-    attendanceRecords.rows.forEach(record => {
-      const key = `${record.employee_id}-${record.date}`;
-      if (!attendanceMap.has(key)) {
-        attendanceMap.set(key, []);
-      }
-      attendanceMap.get(key).push(record);
-    });
-
-    // Generate complete records for each employee
-    const completeRecords = [];
-    const today = new Date().toISOString().split('T')[0];
-
-    employees.rows.forEach(employee => {
-      const registrationDate = employee.registration_date;
-      
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        
-        // Skip dates before employee registration
-        if (dateStr < registrationDate) {
-          continue;
-        }
-
-        // Skip future dates
-        if (dateStr > today) {
-          continue;
-        }
-
-        const dayRecords = attendanceMap.get(`${employee.id}-${dateStr}`) || [];
-
-        if (dayRecords.length > 0) {
-          // Process existing records
-          let earliestClockIn = null;
-          let latestClockOut = null;
-          let location = null;
-          let isAbsent = false;
-
-          dayRecords.forEach(record => {
-            if (record.clock_in && (!earliestClockIn || record.clock_in < earliestClockIn)) {
-              earliestClockIn = record.clock_in;
-            }
-            if (record.clock_out && (!latestClockOut || record.clock_out > latestClockOut)) {
-              latestClockOut = record.clock_out;
-            }
-            if (record.location_name && record.location_name !== "—" && !location) {
-              location = record.location_name;
-            }
-            if (record.is_absent) {
-              isAbsent = true;
-            }
-          });
-
-          let status = "present";
-          if (isAbsent) {
-            status = "absent";
-          } else if (earliestClockIn && latestClockOut) {
-            status = "present";
-          } else if (earliestClockIn || latestClockOut) {
-            status = "partial";
-          }
-
-          completeRecords.push({
-            employee_id: employee.id,
-            username: employee.username,
-            employee_email: employee.email,
-            date: dateStr,
-            clock_in: earliestClockIn,
-            clock_out: latestClockOut,
-            location_name: location || "—",
-            status: status,
-            registration_date: registrationDate,
-            is_absent: isAbsent,
-            record_count: dayRecords.length
-          });
-        } else {
-          // No records - mark as absent
-          completeRecords.push({
-            employee_id: employee.id,
-            username: employee.username,
-            employee_email: employee.email,
-            date: dateStr,
-            clock_in: null,
-            clock_out: null,
-            location_name: "—",
-            status: "absent",
-            registration_date: registrationDate,
-            is_absent: true,
-            record_count: 0
-          });
-        }
-      }
-    });
-
-    console.log(`✅ Generated ${completeRecords.length} complete records for ${year}-${month}`);
-    
-    // Count absent records
-    const absentCount = completeRecords.filter(r => r.status === "absent").length;
-    console.log(`📊 Absent records: ${absentCount}`);
-
-    res.json({
-      success: true,
-      year: yearNum,
-      month: monthNum,
-      records: completeRecords,
-      summary: {
-        total: completeRecords.length,
-        absent: absentCount,
-        present: completeRecords.filter(r => r.status === "present").length,
-        partial: completeRecords.filter(r => r.status === "partial").length
-      }
-    });
-
-  } catch (err) {
-    console.error("Error generating complete attendance:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error generating complete attendance" 
-    });
-  }
-});
-
-/* ---------------- EMPLOYEE FULL HISTORY ---------------- */
-
-app.get("/admin/employee/:id/history", verifyAdmin, async (req, res) => {
-  const employeeId = req.params.id;
-
-  try {
-    // First get employee details
-    const userResult = await pool.query(
-      "SELECT id, username, email, TO_CHAR(created_at, 'YYYY-MM-DD') as created_at FROM users WHERE id = $1",
-      [employeeId]
-    );
-
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    const employee = userResult.rows[0];
-
-    // Then get all attendance records (including absent)
-    const attendanceResult = await pool.query(
-      `SELECT 
-          id,
-          TO_CHAR(date, 'YYYY-MM-DD') as date,
-          a.clock_in::text as clock_in,
-          a.clock_out::text as clock_out,
-          location_name,
-          status,
-          is_absent,
-          created_at as record_created_at
-         FROM attendance a
-         WHERE employee_id = $1
-         ORDER BY date DESC, created_at DESC`,
-      [employeeId]
-    );
-
-    res.json({
-      employee,
-      attendance: attendanceResult.rows,
-      total_records: attendanceResult.rows.length,
-      registered_date: employee.created_at
-    });
-  } catch (err) {
-    console.error("Error fetching employee attendance:", err);
-    res.status(500).json({ message: "Error fetching attendance" });
-  }
-});
-
-/* ---------------- DELETE EMPLOYEE ---------------- */
-
-app.delete("/admin/employees/:id", verifyAdmin, async (req, res) => {
-  const id = req.params.id;
-
-  try {
-    // Delete employee (attendance will cascade due to ON DELETE CASCADE)
-    await pool.query("DELETE FROM users WHERE id = $1", [id]);
-    
-    res.json({ 
-      success: true,
-      message: "Employee deleted successfully" 
-    });
-  } catch (err) {
-    console.error("Error deleting employee:", err);
-    res.status(500).json({ message: "Error deleting employee" });
-  }
-});
-
-/* ---------------- TEST ENDPOINT ---------------- */
+/* ---------------- TEST ENDPOINTS ---------------- */
 
 app.get("/admin/test", verifyAdmin, (req, res) => {
   res.json({ 
     message: "Admin API is working",
-    timestamp: new Date().toISOString(),
-    endpoints: [
-      "/admin/employees",
-      "/admin/attendance/today",
-      "/admin/attendance/monthly/:year/:month",
-      "/admin/employee/:id/history",
-      "/admin/stats",
-      "/admin/attendance/years",
-      "/admin/attendance/date-range",
-      "/admin/attendance/all",
-      "/admin/attendance/range",
-      "/admin/end-of-day"
-    ]
+    timestamp: new Date().toISOString()
   });
 });
 
-/* ---------------- TEST ENDPOINT TO CHECK DATABASE TIMES ---------------- */
 app.get("/admin/test-times", verifyAdmin, async (req, res) => {
   try {
     const result = await pool.query(
@@ -945,11 +858,6 @@ app.get("/admin/test-times", verifyAdmin, async (req, res) => {
        LIMIT 5`
     );
     
-    console.log("📋 Last 5 attendance records from DB:");
-    result.rows.forEach(row => {
-      console.log(`ID ${row.id}: date=${row.date}, clock_in=${row.clock_in}, clock_out=${row.clock_out}`);
-    });
-    
     res.json({
       success: true,
       records: result.rows
@@ -958,277 +866,6 @@ app.get("/admin/test-times", verifyAdmin, async (req, res) => {
     console.error("Error fetching test times:", err);
     res.status(500).json({ error: err.message });
   }
-});
-
-/* ---------------- GET DATE RANGE OF ATTENDANCE RECORDS ---------------- */
-
-app.get("/admin/attendance/date-range", verifyAdmin, async (req, res) => {
-  console.log("📅 Fetching min and max dates from attendance records");
-
-  try {
-    const result = await pool.query(
-      "SELECT MIN(date) as minDate, MAX(date) as maxDate FROM attendance"
-    );
-
-    res.json({
-      success: true,
-      minDate: result.rows[0].mindate,
-      maxDate: result.rows[0].maxdate
-    });
-  } catch (err) {
-    console.error("Error fetching date range:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error fetching date range" 
-    });
-  }
-});
-
-/* ---------------- DELETE ALL ATTENDANCE RECORDS ---------------- */
-
-app.delete("/admin/attendance/all", verifyAdmin, async (req, res) => {
-  console.log("=".repeat(50));
-  console.log("🗑️ DELETING ALL ATTENDANCE RECORDS");
-  console.log("=".repeat(50));
-
-  try {
-    // First, get count of records to be deleted
-    const countResult = await pool.query("SELECT COUNT(*) as total FROM attendance");
-    const totalRecords = parseInt(countResult.rows[0].total);
-
-    // Delete all attendance records
-    await pool.query("DELETE FROM attendance");
-
-    console.log(`✅ Deleted ${totalRecords} attendance records`);
-    
-    res.json({ 
-      success: true,
-      message: `Successfully deleted ${totalRecords} attendance records`,
-      deletedCount: totalRecords
-    });
-  } catch (err) {
-    console.error("Error deleting all attendance records:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error deleting attendance records" 
-    });
-  }
-});
-
-/* ---------------- DELETE ATTENDANCE RECORDS BY DATE RANGE ---------------- */
-
-app.delete("/admin/attendance/range", verifyAdmin, async (req, res) => {
-  const { startDate, endDate } = req.body;
-
-  if (!startDate || !endDate) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Start date and end date are required" 
-    });
-  }
-
-  // Validate date format (YYYY-MM-DD)
-  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Invalid date format. Use YYYY-MM-DD" 
-    });
-  }
-
-  // Validate that startDate is not after endDate
-  if (startDate > endDate) {
-    return res.status(400).json({ 
-      success: false, 
-      message: "Start date cannot be after end date" 
-    });
-  }
-
-  console.log("=".repeat(50));
-  console.log(`🗑️ DELETING ATTENDANCE RECORDS FROM ${startDate} TO ${endDate}`);
-  console.log("=".repeat(50));
-
-  try {
-    // First, get count of records to be deleted in the date range
-    const countResult = await pool.query(
-      "SELECT COUNT(*) as total FROM attendance WHERE date BETWEEN $1 AND $2",
-      [startDate, endDate]
-    );
-    
-    const totalRecords = parseInt(countResult.rows[0].total);
-
-    if (totalRecords === 0) {
-      return res.json({ 
-        success: true,
-        message: `No attendance records found between ${startDate} and ${endDate}`,
-        deletedCount: 0
-      });
-    }
-
-    // Delete attendance records in the date range
-    await pool.query(
-      "DELETE FROM attendance WHERE date BETWEEN $1 AND $2",
-      [startDate, endDate]
-    );
-
-    console.log(`✅ Deleted ${totalRecords} attendance records from ${startDate} to ${endDate}`);
-    
-    res.json({ 
-      success: true,
-      message: `Successfully deleted ${totalRecords} attendance records from ${startDate} to ${endDate}`,
-      deletedCount: totalRecords,
-      startDate: startDate,
-      endDate: endDate
-    });
-  } catch (err) {
-    console.error("Error deleting attendance records:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error deleting attendance records" 
-    });
-  }
-});
-
-/* ---------------- GET AVAILABLE YEARS ---------------- */
-
-app.get("/admin/attendance/years", verifyAdmin, async (req, res) => {
-  console.log("📅 Fetching available years from attendance records");
-
-  try {
-    const result = await pool.query(
-      "SELECT DISTINCT EXTRACT(YEAR FROM date) as year FROM attendance ORDER BY year DESC"
-    );
-
-    const years = result.rows.map(r => parseInt(r.year));
-    console.log("✅ Available years:", years);
-
-    res.json({
-      success: true,
-      years: years
-    });
-  } catch (err) {
-    console.error("Error fetching years:", err);
-    res.status(500).json({ 
-      success: false, 
-      message: "Error fetching years" 
-    });
-  }
-});
-
-/* ---------------- GET STATISTICS ---------------- */
-
-app.get("/admin/stats", verifyAdmin, async (req, res) => {
-  console.log("📊 Fetching dashboard statistics");
-
-  const today = new Date().toISOString().split('T')[0];
-  const year = new Date().getFullYear();
-  const month = new Date().getMonth() + 1;
-
-  try {
-    // Get total employees
-    const employeeResult = await pool.query("SELECT COUNT(*) as total FROM users");
-    const totalEmployees = parseInt(employeeResult.rows[0].total);
-
-    // Get today's attendance
-    const todayResult = await pool.query(
-      `SELECT 
-          COUNT(*) as total_today,
-          SUM(CASE WHEN clock_in IS NOT NULL AND clock_out IS NOT NULL THEN 1 ELSE 0 END) as present_today,
-          SUM(CASE WHEN (clock_in IS NOT NULL AND clock_out IS NULL) OR (clock_in IS NULL AND clock_out IS NOT NULL) THEN 1 ELSE 0 END) as partial_today,
-          COUNT(DISTINCT employee_id) as employees_with_records_today
-        FROM attendance 
-        WHERE date = $1`,
-      [today]
-    );
-
-    const presentToday = parseInt(todayResult.rows[0].present_today) || 0;
-    const partialToday = parseInt(todayResult.rows[0].partial_today) || 0;
-    const employeesWithRecords = parseInt(todayResult.rows[0].employees_with_records_today) || 0;
-    const absentToday = totalEmployees - employeesWithRecords;
-
-    // Get monthly totals
-    const monthResult = await pool.query(
-      `SELECT 
-          COUNT(*) as total_month,
-          SUM(CASE WHEN clock_in IS NOT NULL AND clock_out IS NOT NULL THEN 1 ELSE 0 END) as present_month,
-          SUM(CASE WHEN (clock_in IS NOT NULL AND clock_out IS NULL) OR (clock_in IS NULL AND clock_out IS NOT NULL) THEN 1 ELSE 0 END) as partial_month
-        FROM attendance 
-        WHERE EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
-      [year, month]
-    );
-
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const totalPossibleRecords = totalEmployees * daysInMonth;
-    const presentMonth = parseInt(monthResult.rows[0].present_month) || 0;
-    const partialMonth = parseInt(monthResult.rows[0].partial_month) || 0;
-    const totalRecords = parseInt(monthResult.rows[0].total_month) || 0;
-    const absentMonth = totalPossibleRecords - totalRecords;
-
-    res.json({
-      success: true,
-      stats: {
-        totalEmployees,
-        today: {
-          present: presentToday,
-          partial: partialToday,
-          absent: absentToday,
-          total: presentToday + partialToday,
-          employees_with_records: employeesWithRecords
-        },
-        month: {
-          present: presentMonth,
-          partial: partialMonth,
-          absent: absentMonth,
-          total: totalRecords,
-          possible: totalPossibleRecords
-        }
-      }
-    });
-  } catch (err) {
-    console.error("Error fetching statistics:", err);
-    res.status(500).json({ message: "Error fetching statistics" });
-  }
-});
-
-/* ---------------- AUTOMATIC END OF DAY SCHEDULER ---------------- */
-
-// Schedule end of day report at 1 Am every day
-cron.schedule('0 1 * * *', () => {
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-  
-  console.log('🕛 Running automatic end of day attendance marking for', yesterday);
-  markAbsentEmployees(yesterday);
-}, {
-  scheduled: true,
-  timezone: "Asia/Thimphu"
-});
-
-console.log("⏰ Scheduled end of day job set for 11:59 PM daily (marking previous day's absent)");
-
-app.get("/", (req, res) => {
-  res.send("Attendance System Backend is Running ✅");
-});
-
-// Serve React static files
-const buildPath = path.join(__dirname, "build");
-app.use(express.static(buildPath));
-
-// For any request that doesn't match an API route, serve the React app
-app.use((req, res, next) => {
-  // Check if the request is for an API route
-  if (req.path.startsWith('/admin') || 
-      req.path.startsWith('/auth') || 
-      req.path.startsWith('/attendance')) {
-    return next(); // Continue to API routes
-  }
-  
-  // For all other routes (including /login), serve the React app
-  res.sendFile(path.join(buildPath, 'index.html'));
-});
-
-// 404 handler for unmatched API routes
-app.use((req, res) => {
-  res.status(404).json({ message: 'API route not found' });
 });
 
 /* ---------------- START SERVER ---------------- */
@@ -1244,19 +881,13 @@ app.listen(PORT, () => {
   console.log("   POST /auth/admin-login");
   console.log("   POST /attendance");
   console.log("   GET /attendance/status");
+  console.log("   GET /test-db");
+  console.log("   GET /db-status");
   console.log("\n   👑 ADMIN (requires token):");
   console.log("   GET /admin/test");
   console.log("   GET /admin/test-times");
   console.log("   GET /admin/employees");
   console.log("   GET /admin/attendance/today");
-  console.log("   GET /admin/attendance/monthly/:year/:month");
-  console.log("   GET /admin/employee/:id/history");
-  console.log("   GET /admin/stats");
-  console.log("   GET /admin/attendance/years");
-  console.log("   GET /admin/attendance/date-range");
-  console.log("   DELETE /admin/employees/:id");
-  console.log("   DELETE /admin/attendance/all");
-  console.log("   DELETE /admin/attendance/range");
   console.log("   POST /admin/end-of-day");
   console.log("=".repeat(50));
 });
