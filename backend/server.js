@@ -1209,35 +1209,27 @@ app.get("/", (req, res) => {
   res.send("Attendance System Backend is Running ✅");
 });
 
-/* ---------------- STATIC FILE SERVING ---------------- */
-
-// Serve React static files (must be AFTER all API routes)
+// Serve React static files
 const buildPath = path.join(__dirname, "build");
+app.use(express.static(buildPath));
 
-if (fs.existsSync(buildPath)) {
-  console.log('✅ Build folder found, serving React app');
+// For any request that doesn't match an API route, serve the React app
+app.use((req, res, next) => {
+  // Check if the request is for an API route
+  if (req.path.startsWith('/admin') || 
+      req.path.startsWith('/auth') || 
+      req.path.startsWith('/attendance')) {
+    return next(); // Continue to API routes
+  }
   
-  // Serve static files
-  app.use(express.static(buildPath));
-  
-  // For all non-API routes, serve the React app
-  app.use((req, res, next) => {
-    // Skip API routes
-    if (req.path.startsWith('/auth/') || 
-        req.path.startsWith('/attendance/') || 
-        req.path.startsWith('/admin/')) {
-      return next();
-    }
-    res.sendFile(path.join(buildPath, 'index.html'));
-  });
-} else {
-  console.log('⚠️ Build folder not found, API only mode');
-  
-  // 404 handler for API routes
-  app.use((req, res) => {
-    res.status(404).json({ message: 'API route not found' });
-  });
-}
+  // For all other routes (including /login), serve the React app
+  res.sendFile(path.join(buildPath, 'index.html'));
+});
+
+// 404 handler for unmatched API routes
+app.use((req, res) => {
+  res.status(404).json({ message: 'API route not found' });
+});
 
 /* ---------------- START SERVER ---------------- */
 
