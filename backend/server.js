@@ -1209,27 +1209,38 @@ app.get("/", (req, res) => {
   res.send("Attendance System Backend is Running ✅");
 });
 
+/* ---------------- STATIC FILE SERVING ---------------- */
+
 // Serve React static files
 const buildPath = path.join(__dirname, "build");
-app.use(express.static(buildPath));
 
-// For any request that doesn't match an API route, serve the React app
-app.use((req, res, next) => {
-  // Check if the request is for an API route
-  if (req.path.startsWith('/admin') || 
-      req.path.startsWith('/auth') || 
-      req.path.startsWith('/attendance')) {
-    return next(); // Continue to API routes
-  }
+// Check if build folder exists
+const fs = require('fs');
+if (fs.existsSync(buildPath)) {
+  console.log('✅ Build folder found, serving React app');
   
-  // For all other routes (including /login), serve the React app
-  res.sendFile(path.join(buildPath, 'index.html'));
-});
-
-// 404 handler for unmatched API routes
-app.use((req, res) => {
-  res.status(404).json({ message: 'API route not found' });
-});
+  // API routes should already be registered above
+  // Serve static files
+  app.use(express.static(buildPath));
+  
+  // For all non-API routes, serve the React app
+  app.get('*', (req, res) => {
+    // Skip API routes
+    if (req.path.startsWith('/auth/') || 
+        req.path.startsWith('/attendance/') || 
+        req.path.startsWith('/admin/')) {
+      return res.status(404).json({ message: 'API route not found' });
+    }
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+} else {
+  console.log('⚠️ Build folder not found, API only mode');
+  
+  // 404 handler for API routes
+  app.use((req, res) => {
+    res.status(404).json({ message: 'API route not found' });
+  });
+}
 
 /* ---------------- START SERVER ---------------- */
 
@@ -1237,26 +1248,5 @@ app.listen(PORT, () => {
   console.log("=".repeat(50));
   console.log(`🚀 Server running on port ${PORT}`);
   console.log("=".repeat(50));
-  console.log("\n📡 Available endpoints:");
-  console.log("   🔐 PUBLIC:");
-  console.log("   POST /auth/register");
-  console.log("   POST /login");
-  console.log("   POST /auth/admin-login");
-  console.log("   POST /attendance");
-  console.log("   GET /attendance/status");
-  console.log("\n   👑 ADMIN (requires token):");
-  console.log("   GET /admin/test");
-  console.log("   GET /admin/test-times");
-  console.log("   GET /admin/employees");
-  console.log("   GET /admin/attendance/today");
-  console.log("   GET /admin/attendance/monthly/:year/:month");
-  console.log("   GET /admin/employee/:id/history");
-  console.log("   GET /admin/stats");
-  console.log("   GET /admin/attendance/years");
-  console.log("   GET /admin/attendance/date-range");
-  console.log("   DELETE /admin/employees/:id");
-  console.log("   DELETE /admin/attendance/all");
-  console.log("   DELETE /admin/attendance/range");
-  console.log("   POST /admin/end-of-day");
-  console.log("=".repeat(50));
+  // ... rest of your startup logs
 });
