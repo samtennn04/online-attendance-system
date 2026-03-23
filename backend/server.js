@@ -1209,28 +1209,48 @@ app.get("/", (req, res) => {
   res.send("Attendance System Backend is Running ✅");
 });
 
-// Serve React static files
+/* ---------------- STATIC FILE SERVING ---------------- */
+
+// Serve React static files (must be AFTER all API routes)
 const buildPath = path.join(__dirname, "build");
-app.use(express.static(buildPath));
 
-// For any request that doesn't match an API route, serve the React app
-app.use((req, res, next) => {
-  // Check if the request is for an API route
-  if (req.path.startsWith('/admin') || 
-      req.path.startsWith('/auth') || 
-      req.path.startsWith('/attendance')) {
-    return next(); // Continue to API routes
-  }
+if (fs.existsSync(buildPath)) {
+  console.log('✅ Build folder found, serving React app');
   
-  // For all other routes (including /login), serve the React app
-  res.sendFile(path.join(buildPath, 'index.html'));
-});
+  // Serve static files
+  app.use(express.static(buildPath));
+  
+  // For all non-API routes, serve the React app
+  // Using app.use instead of app.get to avoid path-to-regexp error
+  app.use((req, res, next) => {
+    // Skip API routes - let them return 404 if not found
+    if (req.path.startsWith('/auth/') || 
+        req.path.startsWith('/attendance/') || 
+        req.path.startsWith('/admin/') ||
+        req.path === '/' ||
+        req.path === '/login' ||
+        req.path === '/admindashboard') {
+      return next();
+    }
+    // For all other routes, serve the React app
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+} else {
+  console.log('⚠️ Build folder not found, API only mode');
+}
 
-// 404 handler for unmatched API routes
+// 404 handler for API routes (only if no other route matched)
 app.use((req, res) => {
-  res.status(404).json({ message: 'API route not found' });
+  // Only return 404 for API routes
+  if (req.path.startsWith('/auth/') || 
+      req.path.startsWith('/attendance/') || 
+      req.path.startsWith('/admin/')) {
+    res.status(404).json({ message: 'API route not found' });
+  } else {
+    // For non-API routes without build folder, return 404
+    res.status(404).send('Not found');
+  }
 });
-
 /* ---------------- START SERVER ---------------- */
 
 app.listen(PORT, () => {
